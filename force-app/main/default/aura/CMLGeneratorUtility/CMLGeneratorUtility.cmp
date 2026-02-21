@@ -1,0 +1,46 @@
+<aura:component implements="flexipage:availableForAllPageTypes,lightning:utilityItem" access="global">
+    <aura:attribute name="isGenerating" type="Boolean" default="false"/>
+    <aura:attribute name="snippetCount" type="Integer" default="0"/>
+    <aura:attribute name="pcmAllExists" type="Boolean" default="false"/>
+    
+    <aura:handler name="init" value="{!this}" action="{!c.doInit}"/>
+    
+    <lightning:card title="CML Generator" iconName="custom:custom63">
+        <div class="slds-p-around_medium">
+            <div class="slds-m-bottom_small">
+                <p class="slds-text-body_regular">
+                    Generate CML from CML Snippets and update the PCM_All ExpressionSet.
+                </p>
+                <p class="slds-text-body_small slds-text-color_weak slds-m-top_x-small">
+                    Available snippets: {!v.snippetCount}
+                </p>
+            </div>
+            
+            <aura:if isTrue="{!not(v.pcmAllExists)}">
+                <div class="slds-notify slds-notify_alert slds-alert_warning slds-m-bottom_small" role="alert">
+                    <span class="slds-assistive-text">warning</span>
+                    <h2>
+                        <lightning:icon iconName="utility:warning" alternativeText="Warning" size="x-small" class="slds-m-right_x-small"/>
+                        PCM_All ExpressionSet not found in this org.
+                    </h2>
+                </div>
+            </aura:if>
+            
+            <lightning:button
+                variant="brand"
+                label="Generate CML"
+                title="Generate CML from snippets"
+                onclick="{!c.handleGenerateCML}"
+                disabled="{!v.isGenerating}"
+                iconName="utility:refresh"
+                class="slds-m-top_small"/>
+            
+            <aura:if isTrue="{!v.isGenerating}">
+                <div class="slds-m-top_small">
+                    <lightning:spinner alternativeText="Generating CML..." size="small"/>
+                    <p class="slds-text-align_center slds-m-top_small">Generating CML...</p>
+                </div>
+            </aura:if>
+        </div>
+    </lightning:card>
+</aura:component>

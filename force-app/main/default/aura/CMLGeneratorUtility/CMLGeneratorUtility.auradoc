@@ -1,0 +1,3 @@
+<aura:documentation>
+	<aura:description>CML Generator utility component that can be added to the utility bar in any Lightning app. Generates CML from CML Snippets and updates the PCM_All ExpressionSet BLOB.</aura:description>
+</aura:documentation>
