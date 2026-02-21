@@ -37,6 +37,11 @@
                 <label>ProductRelComponentOverride</label>
             </value>
             <value>
+                <fullName>ProductAttributeDefinition</fullName>
+                <default>false</default>
+                <label>ProductAttributeDefinition</label>
+            </value>
+            <value>
                 <fullName>Virtual</fullName>
                 <default>false</default>
                 <label>Virtual</label>

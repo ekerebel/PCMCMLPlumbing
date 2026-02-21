@@ -55,6 +55,10 @@
                 <behavior>Edit</behavior>
                 <field>ParentProductRelComponentOverride__c</field>
             </layoutItems>
+            <layoutItems>
+                <behavior>Edit</behavior>
+                <field>ParentProductAttributeDefinition__c</field>
+            </layoutItems>
         </layoutColumns>
         <style>TwoColumnsLeftToRight</style>
     </layoutSections>
