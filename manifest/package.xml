@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+    <types>
+        <members>CMLSnippet__c</members>
+        <name>CustomObject</name>
+    </types>
+    <types>
+        <members>CMLSnippet__c.CML__c</members>
+        <members>CMLSnippet__c.Type__c</members>
+        <members>CMLSnippet__c.Object__c</members>
+        <members>CMLSnippet__c.ParentProduct2__c</members>
+        <members>CMLSnippet__c.ParentProductClassification__c</members>
+        <members>CMLSnippet__c.ParentProductComponentGroup__c</members>
+        <members>CMLSnippet__c.ParentProductClassificationAttr__c</members>
+        <members>CMLSnippet__c.ParentProductRelComponentOverride__c</members>
+        <name>CustomField</name>
+    </types>
+    <version>65.0</version>
+</Package>

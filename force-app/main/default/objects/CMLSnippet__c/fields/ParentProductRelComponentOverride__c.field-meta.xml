@@ -3,7 +3,7 @@
     <fullName>ParentProductRelComponentOverride__c</fullName>
     <deleteConstraint>SetNull</deleteConstraint>
     <externalId>false</externalId>
-    <label>Parent Product Related Component Override</label>
+    <label>Parent Prod Rel Comp Override</label>
     <referenceTo>ProductRelComponentOverride</referenceTo>
     <relationshipLabel>CML Snippets</relationshipLabel>
     <relationshipName>CML_Snippets</relationshipName>

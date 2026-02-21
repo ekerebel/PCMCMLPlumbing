@@ -54,8 +54,9 @@
     <enableStreamingApi>true</enableStreamingApi>
     <label>CML Snippet</label>
     <nameField>
+        <displayFormat>CML-{00000000}</displayFormat>
         <label>CML Snippet Name</label>
-        <type>Text</type>
+        <type>AutoNumber</type>
     </nameField>
     <pluralLabel>CML Snippets</pluralLabel>
     <searchLayouts></searchLayouts>
