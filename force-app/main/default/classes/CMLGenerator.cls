@@ -19,10 +19,13 @@ public with sharing class CMLGenerator {
         public String annotation;
         public List<CMLRelation> relations;
         public List<String> constraints;
+        public List<CMLAttribute> attributes;
+        public Id referenceObjectId; // ProductClassification or Product2 ID
         
         public CMLTypeWrapper() {
             this.relations = new List<CMLRelation>();
             this.constraints = new List<String>();
+            this.attributes = new List<CMLAttribute>();
         }
     }
     
@@ -34,6 +37,19 @@ public with sharing class CMLGenerator {
         public String referenceType;
         public Integer cardinalityMin;
         public Integer cardinalityMax;
+    }
+    
+    /**
+     * @description Inner class representing an attribute
+     */
+    public class CMLAttribute {
+        public String name;
+        public String annotation;
+        public String domain;
+        public Id attributeDefinitionId; // AttributeDefinition ID
+        public Id productClassificationAttrId; // ProductClassificationAttr or ProductAttributeDefinition ID
+        public Id picklistId; // Picklist ID if applicable
+        public String defaultValue; // Default value from ProductClassificationAttr or picklist
     }
     
     /**
@@ -53,22 +69,31 @@ public with sharing class CMLGenerator {
             ExpressionSetDefinitionVersion esdv = findPCMAllExpressionSet();
             System.debug('Found ExpressionSet: ' + esdv.ExpressionSetDefinition.DeveloperName);
             
-            // Step 2: Read current BLOB content
-            String currentBlob = readBlobContent(esdv);
-            System.debug('Current BLOB size: ' + (currentBlob != null ? currentBlob.length() : 0) + ' characters');
+            // Step 2: Get the ExpressionSet ID (query only, no DML)
+            Id expressionSetId = getExpressionSetId(esdv.ExpressionSetDefinition.Id);
             
-            // Step 3: Process CML Snippets and build type array
+            // Step 3: Process CML Snippets and build type array (query only, no DML)
             Map<Id, CMLTypeWrapper> typeMap = processSnippets();
             System.debug('Processed ' + typeMap.size() + ' types from snippets');
             
-            // Step 4: Generate CML string
+            // Step 4: Generate CML string (in-memory only)
             String cmlContent = generateCML(typeMap);
             System.debug('Generated CML size: ' + cmlContent.length() + ' characters');
             System.debug('Generated CML:\n' + cmlContent);
             
-            // Step 5: Update BLOB with generated CML
+            // Step 5: Read current BLOB content (HTTP callout - BEFORE any DML)
+            String currentBlob = readBlobContent(esdv);
+            System.debug('Current BLOB size: ' + (currentBlob != null ? currentBlob.length() : 0) + ' characters');
+            
+            // Step 6: Update BLOB with generated CML (HTTP callout - BEFORE any DML)
             updateBlob(esdv, cmlContent);
             System.debug('BLOB updated successfully');
+            
+            // Step 7: Delete existing ExpressionSetConstraintObj records for PCM_All (DML)
+            deleteExpressionSetConstraintObjs(expressionSetId);
+            
+            // Step 8: Create ExpressionSetConstraintObj records for each type (DML)
+            createExpressionSetConstraintObjs(expressionSetId, typeMap);
             
             System.debug('=== CML Generator Completed Successfully ===');
             return 'CML generated and updated successfully for ' + typeMap.size() + ' types.';
@@ -169,7 +194,12 @@ public with sharing class CMLGenerator {
         List<CMLSnippet__c> snippets = [
             SELECT Id, CML__c, Type__c, Object__c,
                    ParentProductClassificationAttr__c,
-                   ParentProductClassificationAttr__r.ProductClassificationId
+                   ParentProductClassificationAttr__r.ProductClassificationId,
+                   ParentProductClassificationAttr__r.AttributeDefinitionId,
+                   ParentProductClassificationAttr__r.AttributeDefinition.DeveloperName,
+                   ParentProductClassificationAttr__r.AttributeDefinition.DataType,
+                   ParentProductClassificationAttr__r.AttributeDefinition.PicklistId,
+                   ParentProductClassificationAttr__r.DefaultValue
             FROM CMLSnippet__c
             WHERE Object__c = 'ProductClassificationAttr'
             AND Type__c = 'annotation'
@@ -187,20 +217,54 @@ public with sharing class CMLGenerator {
                 continue;
             }
             
-            // Create or get the type
+            // Create the type if not already present
+            // NOTE: Per requirements, we do NOT take the annotations of ProductClassificationAttr yet
             if (!typeMap.containsKey(classificationId)) {
                 CMLTypeWrapper type = new CMLTypeWrapper();
                 type.typeName = 'ProductClassification_' + classificationId;
-                type.annotation = snippet.CML__c;
+                type.annotation = ''; // Empty for now as per requirements
+                type.referenceObjectId = classificationId; // Store the ProductClassification ID
                 typeMap.put(classificationId, type);
                 
                 System.debug('Created type: ' + type.typeName);
-            } else {
-                // If type already exists, append annotation
-                CMLTypeWrapper existingType = typeMap.get(classificationId);
-                if (String.isNotBlank(snippet.CML__c)) {
-                    existingType.annotation += '\n' + snippet.CML__c;
+            }
+            
+            // Now add an attribute element to the type's attributes array
+            // The attribute's annotation comes from the CML snippet
+            CMLTypeWrapper type = typeMap.get(classificationId);
+            
+            // Use the AttributeDefinition DeveloperName as the attribute name
+            String attrName = snippet.ParentProductClassificationAttr__r.AttributeDefinition.DeveloperName;
+            
+            // Check if attribute already exists (by name to avoid duplicates)
+            Boolean attrExists = false;
+            for (CMLAttribute existingAttr : type.attributes) {
+                if (existingAttr.name == attrName) {
+                    attrExists = true;
+                    break;
                 }
+            }
+            
+            if (!attrExists) {
+                CMLAttribute attr = new CMLAttribute();
+                attr.name = attrName;
+                attr.annotation = snippet.CML__c; // Use the CML from the snippet as annotation
+                attr.attributeDefinitionId = snippet.ParentProductClassificationAttr__r.AttributeDefinitionId;
+                attr.productClassificationAttrId = snippet.ParentProductClassificationAttr__c;
+                attr.picklistId = snippet.ParentProductClassificationAttr__r.AttributeDefinition.PicklistId;
+                attr.defaultValue = snippet.ParentProductClassificationAttr__r.DefaultValue; // Get default from ProductClassificationAttr
+                
+                // Set domain based on DataType
+                String dataType = snippet.ParentProductClassificationAttr__r.AttributeDefinition.DataType;
+                if (dataType == 'Number') {
+                    attr.domain = 'decimal(2)';
+                } else {
+                    attr.domain = 'string';
+                }
+                
+                type.attributes.add(attr);
+                
+                System.debug('Added attribute: ' + attrName + ' (domain: ' + attr.domain + ', picklistId: ' + attr.picklistId + ', defaultValue: ' + attr.defaultValue + ') to type: ' + type.typeName);
             }
         }
         
@@ -221,7 +285,7 @@ public with sharing class CMLGenerator {
         String cml = '';
         
         for (CMLTypeWrapper type : typeMap.values()) {
-            // Add annotation if present
+            // Add type annotation if present
             if (String.isNotBlank(type.annotation)) {
                 cml += type.annotation + '\n';
             }
@@ -232,6 +296,57 @@ public with sharing class CMLGenerator {
             // Add constraints
             for (String constraint : type.constraints) {
                 cml += '    ' + constraint + '\n';
+            }
+            
+            // Add attributes
+            for (CMLAttribute attr : type.attributes) {
+                // If attribute has a picklist, get values and potentially update default
+                if (attr.picklistId != null) {
+                    List<String> picklistValues = getPicklistValuesWithExclusions(attr.picklistId, attr.productClassificationAttrId, attr);
+                }
+                
+                // Add attribute annotation with defaultValue if present
+                String annotationToUse = attr.annotation;
+                if (String.isNotBlank(attr.defaultValue)) {
+                    // Add or update annotation with defaultValue
+                    if (String.isNotBlank(annotationToUse)) {
+                        // Annotation exists, add defaultValue to it
+                        // Remove closing parenthesis and add defaultValue
+                        if (annotationToUse.endsWith(')')) {
+                            annotationToUse = annotationToUse.substring(0, annotationToUse.length() - 1);
+                            annotationToUse += ', defaultValue = "' + attr.defaultValue + '")';
+                        }
+                    } else {
+                        // No annotation, create one with just defaultValue
+                        annotationToUse = '@(defaultValue = "' + attr.defaultValue + '")';
+                    }
+                }
+                
+                if (String.isNotBlank(annotationToUse)) {
+                    cml += '    ' + annotationToUse + '\n';
+                }
+                
+                // Add attribute declaration
+                cml += '    ' + attr.domain + ' ' + attr.name;
+                
+                // If attribute has a picklist, add domain values
+                if (attr.picklistId != null) {
+                    List<String> picklistValues = getPicklistValuesWithExclusions(attr.picklistId, attr.productClassificationAttrId, attr);
+                    if (!picklistValues.isEmpty()) {
+                        cml += ' = [';
+                        for (Integer i = 0; i < picklistValues.size(); i++) {
+                            cml += '"' + picklistValues[i] + '"';
+                            if (i < picklistValues.size() - 1) {
+                                cml += ', ';
+                            }
+                        }
+                        cml += '];\n';
+                    } else {
+                        cml += ';\n';
+                    }
+                } else {
+                    cml += ';\n';
+                }
             }
             
             cml += '}\n\n';
@@ -299,5 +414,121 @@ public with sharing class CMLGenerator {
         }
         
         System.debug('BLOB updated successfully via Composite API');
+    }
+    
+    /**
+     * @description Gets the ExpressionSet ID by querying the ExpressionSet table
+     * @param expressionSetDefinitionId The ExpressionSetDefinition ID (not used, kept for signature)
+     * @return Id The ExpressionSet ID
+     */
+    private static Id getExpressionSetId(Id expressionSetDefinitionId) {
+        // Query the ExpressionSet table directly using ApiName
+        List<ExpressionSet> expressionSets = [
+            SELECT Id
+            FROM ExpressionSet
+            WHERE ApiName = :ALLOWED_EXPRESSION_SET
+            LIMIT 1
+        ];
+        
+        if (expressionSets.isEmpty()) {
+            throw new CMLGeneratorException(
+                'ExpressionSet with ApiName "' + ALLOWED_EXPRESSION_SET + '" not found.'
+            );
+        }
+        
+        return expressionSets[0].Id;
+    }
+    
+    /**
+     * @description Deletes all ExpressionSetConstraintObj records for the given ExpressionSet
+     * SAFETY: Only deletes for PCM_All ExpressionSet
+     * @param expressionSetId The ExpressionSet ID
+     */
+    private static void deleteExpressionSetConstraintObjs(Id expressionSetId) {
+        List<ExpressionSetConstraintObj> objsToDelete = [
+            SELECT Id
+            FROM ExpressionSetConstraintObj
+            WHERE ExpressionSetId = :expressionSetId
+        ];
+        
+        if (!objsToDelete.isEmpty()) {
+            System.debug('Deleting ' + objsToDelete.size() + ' ExpressionSetConstraintObj records');
+            delete objsToDelete;
+            System.debug('Deleted ExpressionSetConstraintObj records successfully');
+        } else {
+            System.debug('No ExpressionSetConstraintObj records to delete');
+        }
+    }
+    
+    /**
+     * @description Creates ExpressionSetConstraintObj records for each type
+     * @param expressionSetId The ExpressionSet ID
+     * @param typeMap Map of types to create constraint objects for
+     */
+    private static void createExpressionSetConstraintObjs(Id expressionSetId, Map<Id, CMLTypeWrapper> typeMap) {
+        List<ExpressionSetConstraintObj> objsToCreate = new List<ExpressionSetConstraintObj>();
+        
+        for (CMLTypeWrapper type : typeMap.values()) {
+            ExpressionSetConstraintObj obj = new ExpressionSetConstraintObj();
+            obj.ExpressionSetId = expressionSetId;
+            obj.ReferenceObjectId = type.referenceObjectId;
+            obj.ConstraintModelTag = type.typeName;
+            obj.ConstraintModelTagType = 'Type';
+            objsToCreate.add(obj);
+        }
+        
+        if (!objsToCreate.isEmpty()) {
+            System.debug('Creating ' + objsToCreate.size() + ' ExpressionSetConstraintObj records');
+            insert objsToCreate;
+            System.debug('Created ExpressionSetConstraintObj records successfully');
+        }
+    }
+    
+    /**
+     * @description Gets picklist values with exclusions applied
+     * @param picklistId The Picklist ID
+     * @param productClassificationAttrId The ProductClassificationAttr ID
+     * @param attr The attribute to update with default value
+     * @return List<String> List of picklist Name values (excluding any excluded values)
+     */
+    private static List<String> getPicklistValuesWithExclusions(Id picklistId, Id productClassificationAttrId, CMLAttribute attr) {
+        List<String> values = new List<String>();
+        
+        // Get all picklist values
+        List<AttributePicklistValue> picklistValues = [
+            SELECT Id, Name, IsDefault
+            FROM AttributePicklistValue
+            WHERE PicklistId = :picklistId
+            ORDER BY Sequence ASC
+        ];
+        
+        // Get excluded picklist value IDs for this ProductClassificationAttr
+        Set<Id> excludedPicklistValueIds = new Set<Id>();
+        List<AttrPicklistExcludedValue> excludedValues = [
+            SELECT AttributePicklistValueId
+            FROM AttrPicklistExcludedValue
+            WHERE AttributeId = :productClassificationAttrId
+        ];
+        
+        for (AttrPicklistExcludedValue excluded : excludedValues) {
+            excludedPicklistValueIds.add(excluded.AttributePicklistValueId);
+        }
+        
+        // Build final list excluding any excluded values
+        // Also track the default value from picklist if not already set
+        for (AttributePicklistValue pv : picklistValues) {
+            if (!excludedPicklistValueIds.contains(pv.Id)) {
+                values.add(pv.Name);
+                
+                // If this is the default and we don't have a default from ProductClassificationAttr, use it
+                if (pv.IsDefault && String.isBlank(attr.defaultValue)) {
+                    attr.defaultValue = pv.Name;
+                }
+            }
+        }
+        
+        System.debug('Picklist ' + picklistId + ': Found ' + picklistValues.size() + ' values, excluded ' + excludedPicklistValueIds.size() + ', returning ' + values.size() + ', default: ' + attr.defaultValue);
+        
+        return values;
     }
 }
