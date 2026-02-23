@@ -703,8 +703,7 @@ public with sharing class CMLGenerator {
                 if (rel.objectType == 'ProductRelatedComponent') {
                     cml += generateProductRelatedComponentRelation(rel, type, typeMap);
                 } else if (rel.objectType == 'ProductComponentGroup') {
-                    // TODO: Implement ProductComponentGroup logic
-                    System.debug('ProductComponentGroup relation generation not yet implemented for: ' + rel.objectId);
+                    cml += generateProductComponentGroupRelation(rel, type, typeMap);
                 }
             }
             
@@ -781,6 +780,170 @@ public with sharing class CMLGenerator {
         System.debug('Generated ProductRelatedComponent relation: ' + relationName + ' -> ' + product2TypeName + cardinality);
         
         return relationCml;
+    }
+    
+    /**
+     * @description Generates CML for a ProductComponentGroup relation
+     * @param rel The relation object
+     * @param type The parent type
+     * @param typeMap The global type map
+     * @return String The generated CML for this relation
+     */
+    private static String generateProductComponentGroupRelation(CMLRelation rel, CMLTypeWrapper type, Map<Id, CMLTypeWrapper> typeMap) {
+        String relationCml = '';
+        
+        // Query ProductComponentGroup to get cardinality
+        List<ProductComponentGroup> pcgs = [
+            SELECT Id, MinBundleComponents, MaxBundleComponents
+            FROM ProductComponentGroup
+            WHERE Id = :rel.objectId
+            LIMIT 1
+        ];
+        
+        if (pcgs.isEmpty()) {
+            System.debug('Warning: ProductComponentGroup ' + rel.objectId + ' not found');
+            return '';
+        }
+        
+        ProductComponentGroup pcg = pcgs[0];
+        
+        // Query all ProductRelatedComponents for this ProductComponentGroup
+        List<ProductRelatedComponent> prcs = [
+            SELECT Id, ChildProductId, MinQuantity, MaxQuantity
+            FROM ProductRelatedComponent
+            WHERE ProductComponentGroupId = :rel.objectId
+        ];
+        
+        System.debug('Found ' + prcs.size() + ' ProductRelatedComponents for ProductComponentGroup ' + rel.objectId);
+        
+        // Check qualification criteria
+        Boolean qualifiesForClassificationRelation = false;
+        Id commonClassificationId = null;
+        
+        if (pcg.MaxBundleComponents == 1 && !prcs.isEmpty()) {
+            // Check if all PRCs have ChildProductId (not null)
+            Boolean allHaveProduct2 = true;
+            Set<Id> product2Ids = new Set<Id>();
+            
+            for (ProductRelatedComponent prc : prcs) {
+                if (prc.ChildProductId == null) {
+                    allHaveProduct2 = false;
+                    break;
+                }
+                product2Ids.add(prc.ChildProductId);
+            }
+            
+            if (allHaveProduct2) {
+                // Query all Product2 records to check if they're based on the same ProductClassification
+                List<Product2> products = [
+                    SELECT Id, BasedOnId
+                    FROM Product2
+                    WHERE Id IN :product2Ids
+                ];
+                
+                Set<Id> classificationIds = new Set<Id>();
+                for (Product2 p : products) {
+                    if (p.BasedOnId != null) {
+                        classificationIds.add(p.BasedOnId);
+                    }
+                }
+                
+                // If all products are based on the same classification, qualify
+                if (classificationIds.size() == 1) {
+                    qualifiesForClassificationRelation = true;
+                    commonClassificationId = new List<Id>(classificationIds)[0];
+                    System.debug('ProductComponentGroup qualifies for ProductClassification relation: ' + commonClassificationId);
+                }
+            }
+        }
+        
+        if (qualifiesForClassificationRelation) {
+            // Generate ProductClassification relation
+            String classificationTypeName = ensureProductClassificationTypeExistsById(commonClassificationId, typeMap);
+            
+            // Ensure Product2 types exist for all ProductRelatedComponents in the group
+            for (ProductRelatedComponent prc : prcs) {
+                if (prc.ChildProductId != null) {
+                    ensureProduct2TypeExists(prc.ChildProductId, typeMap);
+                    System.debug('Ensured Product2 type exists for PRC ' + prc.Id + ': Product2_' + prc.ChildProductId);
+                }
+            }
+            
+            // Add relation annotation if present
+            if (String.isNotBlank(rel.annotation)) {
+                relationCml += '    ' + rel.annotation + '\n';
+            }
+            
+            // Generate relation name
+            String relationName = 'REL_ProductComponentGroup_' + rel.objectId;
+            
+            // Build cardinality string (MinBundleComponents defaults to 0 if null)
+            Integer minQty = pcg.MinBundleComponents != null ? pcg.MinBundleComponents : 0;
+            String maxQty = pcg.MaxBundleComponents != null ? String.valueOf(pcg.MaxBundleComponents) : '*';
+            String cardinality = '[' + minQty + '..' + maxQty + ']';
+            
+            // Generate relation CML
+            relationCml += '    relation ' + relationName + ' : ' + classificationTypeName + cardinality + ';\n';
+            
+            System.debug('Generated ProductComponentGroup relation to ProductClassification: ' + relationName + ' -> ' + classificationTypeName + cardinality);
+        } else {
+            // Generate individual ProductRelatedComponent relations
+            System.debug('ProductComponentGroup does not qualify for ProductClassification relation, generating individual ProductRelatedComponent relations');
+            
+            for (ProductRelatedComponent prc : prcs) {
+                if (prc.ChildProductId == null) {
+                    System.debug('Warning: ProductRelatedComponent ' + prc.Id + ' has no ChildProductId, skipping');
+                    continue;
+                }
+                
+                // Ensure Product2 type exists
+                String product2TypeName = ensureProduct2TypeExists(prc.ChildProductId, typeMap);
+                
+                // Generate relation name
+                String relationName = 'REL_ProductRelatedComponent_' + prc.Id;
+                
+                // Build cardinality string
+                String cardinality = '';
+                if (prc.MinQuantity != null || prc.MaxQuantity != null) {
+                    Integer minQty = prc.MinQuantity != null ? prc.MinQuantity.intValue() : 0;
+                    String maxQty = prc.MaxQuantity != null ? String.valueOf(prc.MaxQuantity.intValue()) : '*';
+                    cardinality = '[' + minQty + '..' + maxQty + ']';
+                }
+                
+                // Generate relation CML
+                relationCml += '    relation ' + relationName + ' : ' + product2TypeName + cardinality + ';\n';
+                
+                System.debug('Generated ProductRelatedComponent relation from PCG: ' + relationName + ' -> ' + product2TypeName + cardinality);
+            }
+        }
+        
+        return relationCml;
+    }
+    
+    /**
+     * @description Ensures a ProductClassification type exists by ID
+     * @param classificationId The ProductClassification ID
+     * @param typeMap The global type map
+     * @return String The ProductClassification type name
+     */
+    private static String ensureProductClassificationTypeExistsById(Id classificationId, Map<Id, CMLTypeWrapper> typeMap) {
+        String classificationTypeName = 'ProductClassification_' + classificationId;
+        
+        // Check if the ProductClassification type already exists
+        if (!typeMap.containsKey(classificationId)) {
+            // Create the ProductClassification type
+            CMLTypeWrapper type = new CMLTypeWrapper();
+            type.typeName = classificationTypeName;
+            type.annotation = '';
+            type.referenceObjectId = classificationId;
+            typeMap.put(classificationId, type);
+            
+            System.debug('Created ProductClassification type: ' + classificationTypeName);
+        } else {
+            System.debug('ProductClassification type already exists: ' + classificationTypeName);
+        }
+        
+        return classificationTypeName;
     }
     
     /**
@@ -982,8 +1145,26 @@ public with sharing class CMLGenerator {
                     objsToCreate.add(portObj);
                     
                     System.debug('Created Port record for ProductRelatedComponent: ' + portObj.ConstraintModelTag);
+                } else if (rel.objectType == 'ProductComponentGroup') {
+                    // Query all ProductRelatedComponents for this ProductComponentGroup
+                    List<ProductRelatedComponent> prcs = [
+                        SELECT Id
+                        FROM ProductRelatedComponent
+                        WHERE ProductComponentGroupId = :rel.objectId
+                    ];
+                    
+                    // Create a Port record for each ProductRelatedComponent in the group
+                    for (ProductRelatedComponent prc : prcs) {
+                        ExpressionSetConstraintObj portObj = new ExpressionSetConstraintObj();
+                        portObj.ExpressionSetId = expressionSetId;
+                        portObj.ReferenceObjectId = prc.Id;
+                        portObj.ConstraintModelTag = 'REL_ProductComponentGroup_' + rel.objectId;
+                        portObj.ConstraintModelTagType = 'Port';
+                        objsToCreate.add(portObj);
+                        
+                        System.debug('Created Port record for ProductComponentGroup: ' + portObj.ConstraintModelTag + ' (PRC: ' + prc.Id + ')');
+                    }
                 }
-                // TODO: Add ProductComponentGroup Port creation when that logic is implemented
             }
         }
         
