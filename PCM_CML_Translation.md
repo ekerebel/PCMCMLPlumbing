@@ -44,12 +44,26 @@ For each such snippet:
 CMLSnippets: Object=='ProductClassification' and Type="constraint"
 -------------------------------------------------------------------------
 For each such snippet:
-1- identify which product classification it is linked to (use ParentClassificationAttr__c which gives you the ProductClassificationAttr object. In that object, use the ProductClassification lookup field).
+1- identify which product classification it is linked to (use ParentProductClassificationAttr__c which gives you the ProductClassificationAttr object. In that object, use the ProductClassification lookup field).
 2- take that Product Classification and add it as a type in your array if not already present. The name of the type would be "ProductClassification_"+ProductClassification.Id.
 3- Add the CML Snippet to the constraint array for that type
-4- parse the constraint and identify attributes being mentioned. These would look like ProductClassificationAttr_<ProductClassificationAttr Id> or ProductAttributeDefinition_<ProductAttributeDefinition Id>.
+4- parse the constraint and identify attributes being mentioned. In order to do that, extract the ProductClassificationAttr records that are linked to the ProductClassification (see lookup ProductClassificationId), and get the AttributeDefinition's ApiName (use AttributeDefinitionId to get the AttributeDefinition). Then see if that attribute is referenced in the CML Snipped. If it is, we add it to the type's attributes array
 If the attribute referenced is already present in the type's attribute array, ignore, if not, add it (like for the previous CML Snippet paragraph above)
-5- Parse the constraint and detect ProductComponentGroups being mentioned.
+
+
+[TO DO] Need to account for overrides as well
+
+-------------------------------------------------------------------------
+CMLSnippets: Object=='Product2' and Type="constraint"
+-------------------------------------------------------------------------
+For each such snippet:
+1- identify which product2 it is linked to (use ParentProduct2__c which gives you the Product2 object. In that object, use the ParentProduct2__c lookup field).
+2- take that Product Classification and add it as a type in your array if not already present. The name of the type would be "ParentProduct2__c"+ParentProduct2__c.Id.
+3- Add the CML Snippet to the constraint array for that type
+4- parse the constraint and identify attributes being mentioned. In order to do that, extract the ProductAttributeDefinition records that are linked to the Product2 (see lookup Product2Id), and get the AttributeDefinition's ApiName (use AttributeDefinitionId to get the AttributeDefinition). Then see if that attribute is referenced in the CML Snippet. If it is, we add it to the type's attributes array
+If the attribute referenced is already present in the type's attribute array, ignore, if not, add it (like for the previous CML Snippet paragraph above)
+5- Get the Product2 record's Product Classification (Product2Id lookup field) and get the attributes of the class. Check their presence in the current CMNL Snipped and if they are, add them to the current type's attributes array as well
+6- Parse the constraint and detect ProductComponentGroups being mentioned.
 They would look like: ProductComponentGroup_<ProductComponentGroup Id>
 With that, add the ProductComponentGroup as a relation array entry for the type detected. Relation's object type is ProductComponentGroup
 Relation's object id is the ProductComponentGroup id
@@ -69,7 +83,7 @@ As a start, delete the rows of ExpressionSetConstraintObj for the ExpressionSetI
 For each type in the array, add the following to the CML blob:
 
 <type annotation>
-type <typeName>{
+type <typeName>{ //Note: when creating a type for a Product2, check its ProductClassification (lookup BasedOn in Product2). Always add " : ProductClassification_<ProductClassification's Id> after <typeName>. Also, ensure that there is already a type for the ProductClassification and if not, add it.
     <for each constraint in the type's constraint array>
         <constraint's string>
     </end for each constraint in the type's constraint array>
@@ -78,7 +92,7 @@ type <typeName>{
         get the attribute's developer name. Find this in the AttributeDefinition object, DeveloperName.
         get the Data Type from the Attribute Definition.
         add "decimal(2)" if Data Type is number, "string" in all the other cases.
-        After that, add a space, then the attribute's developer name
+        After that, add a space, the attribute's name
         If the attribute has an associated picklist, we need to prepare the domain. More on that later. If not, just end the line with ";"
         In order to create the domain, start from the AttributeDefinition, get the related picklist (lookup PicklistId), and extract all values. Get all the "Name" values from the AttributePicklistValue table. If there is a default value (Default field is checked), keep track of that.
         Now, we may need to exclude some values. Associated to the ProductClassificationAttr or the ProductAttributeDefinition (we should have one or the other id), we will find a related list of AttrPicklistExcludedValue.
@@ -96,14 +110,15 @@ type <typeName>{
             - retrieve the cardinality of that ProductRelatedComponent (query its table ProductRelatedComponent, MinQuantity, MaxQuantity)
             - append to the CML blob, within the current type's section: 
                 <Relation's annotation if any>
-                relation Rel_ProductRelatedComponent_<ProductRelatedComponent> : ProductRelatedComponent_<ProductRelatedComponent>[<MinQuantity..MaxQuantity>]; (If MinQuantity and MaxQuantity are empty, remove the [])
+                relation Rel_ProductRelatedComponent_<ProductRelatedComponent> : Product2_<Product2 Id>[<MinQuantity..MaxQuantity>]; (If MinQuantity and MaxQuantity are empty, remove the [])
+                Note: if there is not already a type for the Product2 referenced, we need to add one
             - Add a record to ExpressionSetConstraintObj:
                 Name: let auto-number
                 ExpressionSetId: the one for our PCM_All Expression set)
                 ExpressionSet.ApiName: PCM_All
                 ReferenceObjectId: <ProductRelatedComponent id>
-                ConstraintModelTag: <Type's name>.<Rel_ProductRelatedComponent_<ProductRelatedComponent>
-                COnstraintModelTagType: Port
+                ConstraintModelTag: <Rel_ProductRelatedComponent_<ProductRelatedComponent>
+                ConstraintModelTagType: Port
             - if not already added, add a type in the CML for Product2 related to the ProductRelatedComponent (to treat after)
         if the relation's object type is ProductComponentGroup:
             - check ProductComponentGroup MinBundleComponents and MaxBundleComponents fields.
