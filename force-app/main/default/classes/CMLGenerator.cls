@@ -89,18 +89,14 @@ public with sharing class CMLGenerator {
             System.debug('Generated CML size: ' + cmlContent.length() + ' characters');
             System.debug('Generated CML:\n' + cmlContent);
             
-            // Step 5: Read current BLOB content (HTTP callout - BEFORE any DML)
-            String currentBlob = readBlobContent(esdv);
-            System.debug('Current BLOB size: ' + (currentBlob != null ? currentBlob.length() : 0) + ' characters');
-            
-            // Step 6: Update BLOB with generated CML (HTTP callout - BEFORE any DML)
+            // Step 5: Update BLOB with generated CML (HTTP callout - BEFORE any DML)
             updateBlob(esdv, cmlContent);
             System.debug('BLOB updated successfully');
             
-            // Step 7: Delete existing ExpressionSetConstraintObj records for PCM_All (DML)
+            // Step 6: Delete existing ExpressionSetConstraintObj records (DML - AFTER callout)
             deleteExpressionSetConstraintObjs(expressionSetId);
             
-            // Step 8: Create ExpressionSetConstraintObj records for each type (DML)
+            // Step 7: Create ExpressionSetConstraintObj records for each type (DML)
             createExpressionSetConstraintObjs(expressionSetId, typeMap);
             
             System.debug('=== CML Generator Completed Successfully ===');
@@ -171,10 +167,13 @@ public with sharing class CMLGenerator {
         
         System.debug('Reading BLOB from: ' + fullUrl);
         
+        // Get session ID from Page reference or use alternative method
+        String sessionId = getSessionId();
+        
         HttpRequest req = new HttpRequest();
         req.setEndpoint(fullUrl);
         req.setMethod('GET');
-        req.setHeader('Authorization', 'Bearer ' + UserInfo.getSessionId());
+        req.setHeader('Authorization', 'Bearer ' + sessionId);
         req.setHeader('Content-Type', 'application/octet-stream');
         
         Http http = new Http();
@@ -188,6 +187,21 @@ public with sharing class CMLGenerator {
                 ', Body: ' + res.getBody()
             );
         }
+    }
+    
+    /**
+     * @description Gets a valid session ID for API calls
+     * @return String Session ID
+     */
+    private static String getSessionId() {
+        // UserInfo.getSessionId() works in most contexts including when called from LWC
+        String sessionId = UserInfo.getSessionId();
+        
+        if (String.isBlank(sessionId)) {
+            throw new CMLGeneratorException('Unable to obtain session ID for API calls');
+        }
+        
+        return sessionId;
     }
     
     /**
@@ -1043,10 +1057,13 @@ public with sharing class CMLGenerator {
             '}]' +
         '}';
         
+        // Get session ID using helper method
+        String sessionId = getSessionId();
+        
         HttpRequest req = new HttpRequest();
         req.setEndpoint(fullUrl);
         req.setMethod('PATCH');
-        req.setHeader('Authorization', 'Bearer ' + UserInfo.getSessionId());
+        req.setHeader('Authorization', 'Bearer ' + sessionId);
         req.setHeader('Content-Type', 'application/json');
         req.setBody(jsonBody);
         

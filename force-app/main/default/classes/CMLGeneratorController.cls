@@ -5,23 +5,28 @@
 public with sharing class CMLGeneratorController {
     
     /**
-     * @description Executes the CML generation process
-     * @return String Success or error message
+     * @description Executes the CML generation process using Queueable
+     * This avoids session ID issues by running in a system context
+     * @return String Success message with job ID
      */
     @AuraEnabled
     public static String generateCML() {
         try {
-            String result = CMLGenerator.execute();
-            return result;
+            // Enqueue the job to run in system context
+            Id jobId = CMLGeneratorQueueable.enqueue();
+            
+            return 'CML generation job started successfully. Job ID: ' + jobId + 
+                   '. Check the debug logs for results.';
         } catch (Exception e) {
             // Log the error
             System.debug(LoggingLevel.ERROR, 'CMLGeneratorController Error: ' + e.getMessage());
             System.debug(LoggingLevel.ERROR, 'Stack Trace: ' + e.getStackTraceString());
             
             // Throw AuraHandledException for proper LWC error handling
-            throw new AuraHandledException('Error generating CML: ' + e.getMessage());
+            throw new AuraHandledException('Error starting CML generation: ' + e.getMessage());
         }
     }
+
     
     /**
      * @description Checks if the PCM_All ExpressionSet exists
@@ -44,7 +49,7 @@ public with sharing class CMLGeneratorController {
     }
     
     /**
-     * @description Gets count of CML Snippets available for processing
+     * @description Gets count of ALL CML Snippets available for processing
      * @return Integer Count of snippets
      */
     @AuraEnabled(cacheable=true)
@@ -53,9 +58,6 @@ public with sharing class CMLGeneratorController {
             return [
                 SELECT COUNT()
                 FROM CMLSnippet__c
-                WHERE Object__c = 'ProductClassificationAttr'
-                AND Type__c = 'annotation'
-                AND ParentProductClassificationAttr__c != null
             ];
         } catch (Exception e) {
             System.debug(LoggingLevel.ERROR, 'Error getting snippet count: ' + e.getMessage());

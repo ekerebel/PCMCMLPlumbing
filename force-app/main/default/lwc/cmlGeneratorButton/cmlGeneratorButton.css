@@ -1,0 +1,57 @@
+.tile-card {
+    border: 1px solid #dddbda;
+    border-radius: 0.25rem;
+    background-color: white;
+    padding: 1rem;
+    transition: box-shadow 0.1s ease-in-out;
+}
+
+.tile-card:hover {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.tile-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.icon-container {
+    flex-shrink: 0;
+}
+
+.icon-container lightning-icon {
+    --slds-c-icon-color-background: #4bca81;
+    --slds-c-icon-color-foreground: white;
+    border-radius: 50%;
+}
+
+.tile-content {
+    flex: 1;
+}
+
+.tile-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #080707;
+    margin: 0 0 0.5rem 0;
+    line-height: 1.25;
+}
+
+.tile-description {
+    font-size: 0.875rem;
+    color: #3e3e3c;
+    margin: 0 0 0.25rem 0;
+    line-height: 1.5;
+}
+
+.tile-meta {
+    font-size: 0.75rem;
+    color: #706e6b;
+    margin: 0;
+}
+
+.button-container {
+    margin-top: 1rem;
+}
