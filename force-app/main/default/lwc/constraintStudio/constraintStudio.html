@@ -1,0 +1,112 @@
+<template>
+    <div class="constraint-studio">
+        <div class="studio-container">
+            <!-- Left Pane: Explorer -->
+            <div class="left-pane">
+                <!-- Search Bar -->
+                <div class="search-container">
+                    <lightning-input
+                        type="search"
+                        placeholder="Search..."
+                        value={searchTerm}
+                        onchange={handleSearchChange}
+                        class="search-input">
+                    </lightning-input>
+                </div>
+                
+                <!-- Sections -->
+                <div class="sections-container">
+                    <template for:each={sections} for:item="section">
+                        <div key={section.key} class="section">
+                            <!-- Section Header -->
+                            <div class="section-header">
+                                <div class="section-title" data-key={section.key} onclick={handleToggleSection}>
+                                    <template if:true={section.expanded}>
+                                        <lightning-icon 
+                                            icon-name="utility:chevrondown"
+                                            size="x-small"
+                                            class="section-icon">
+                                        </lightning-icon>
+                                    </template>
+                                    <template if:false={section.expanded}>
+                                        <lightning-icon 
+                                            icon-name="utility:chevronright"
+                                            size="x-small"
+                                            class="section-icon">
+                                        </lightning-icon>
+                                    </template>
+                                    <span class="section-label">{section.label}</span>
+                                    <span class="section-count">({section.items.length})</span>
+                                </div>
+                                <lightning-button-icon
+                                    icon-name="utility:add"
+                                    variant="bare"
+                                    alternative-text="Add Snippet"
+                                    title="Add Snippet"
+                                    data-key={section.key}
+                                    onclick={handleAddSnippet}
+                                    class="add-button">
+                                </lightning-button-icon>
+                            </div>
+                            
+                            <!-- Section Items -->
+                            <template if:true={section.expanded}>
+                                <div class="section-items">
+                                    <template if:true={section.hasItems}>
+                                        <template for:each={section.items} for:item="snippet">
+                                            <div key={snippet.Id} class="snippet-item">
+                                                <div 
+                                                    class="snippet-content"
+                                                    data-id={snippet.Id}
+                                                    onclick={handleSnippetClick}>
+                                                    <lightning-icon 
+                                                        icon-name="utility:text"
+                                                        size="x-small"
+                                                        class="snippet-icon">
+                                                    </lightning-icon>
+                                                    <template if:true={snippet.Label__c}>
+                                                        <span class="snippet-label">
+                                                            {snippet.Label__c}
+                                                        </span>
+                                                    </template>
+                                                    <template if:false={snippet.Label__c}>
+                                                        <span class="snippet-label">
+                                                            {snippet.Name}
+                                                        </span>
+                                                    </template>
+                                                </div>
+                                                <lightning-button-icon
+                                                    icon-name="utility:delete"
+                                                    variant="bare"
+                                                    alternative-text="Delete"
+                                                    title="Delete"
+                                                    data-id={snippet.Id}
+                                                    data-label={snippet.Label__c}
+                                                    data-name={snippet.Name}
+                                                    onclick={handleDeleteSnippet}
+                                                    class="delete-button">
+                                                </lightning-button-icon>
+                                            </div>
+                                        </template>
+                                    </template>
+                                    <template if:false={section.hasItems}>
+                                        <div class="empty-section">
+                                            No snippets
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </div>
+            
+            <!-- Right Pane: Placeholder -->
+            <div class="right-pane">
+                <div class="placeholder">
+                    <!-- Placeholder for future content -->
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
