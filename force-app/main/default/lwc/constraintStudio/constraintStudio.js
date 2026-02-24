@@ -342,6 +342,15 @@ export default class ConstraintStudio extends LightningElement {
             
             console.log('Contextual products fetched:', contextualProducts);
             
+            // Add contextual products to allSuggestions for translation lookup
+            contextualProducts.forEach(product => {
+                // Check if not already in allSuggestions
+                const exists = this.allSuggestions.find(s => s.value === product.value);
+                if (!exists) {
+                    this.allSuggestions.push(product);
+                }
+            });
+            
             // Show contextual suggestions in the code editor
             const codeEditor = this.template.querySelector('c-cml-code-editor');
             if (codeEditor) {

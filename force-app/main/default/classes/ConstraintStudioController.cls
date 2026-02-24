@@ -267,7 +267,7 @@ public with sharing class ConstraintStudioController {
                     String cleanName = prc.ChildProduct.Name.replaceAll('[^a-zA-Z0-9]', '_');
                     result.add(new Map<String, String>{
                         'type' => 'Product',
-                        'value' => 'Product2:' + prc.ChildProductId,
+                        'value' => 'Product2_' + prc.ChildProductId,
                         'displayName' => 'Product: ' + cleanName,
                         'actualName' => cleanName,
                         'color' => 'green',
@@ -287,7 +287,7 @@ public with sharing class ConstraintStudioController {
                 String cleanName = prc.ChildProduct.Name.replaceAll('[^a-zA-Z0-9]', '_');
                 result.add(new Map<String, String>{
                     'type' => 'Product',
-                    'value' => 'Product2:' + prc.ChildProductId,
+                    'value' => 'Product2_' + prc.ChildProductId,
                     'displayName' => 'Product: ' + cleanName,
                     'actualName' => cleanName,
                     'color' => 'green',
