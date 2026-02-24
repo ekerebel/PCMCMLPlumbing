@@ -28,11 +28,14 @@ export default class CmlCodeEditor extends LightningElement {
             textarea.value = this.internalValue;
         }
         
-        // Update syntax highlighting
-        this.updateSyntaxHighlighting();
+        // Syntax highlighting disabled - not compatible with LWC textarea overlay
+        // this.updateSyntaxHighlighting();
     }
     
     updateSyntaxHighlighting() {
+        // Disabled - HTML rendering not compatible with textarea overlay in LWC
+        return;
+        
         const highlightLayer = this.template.querySelector('.syntax-highlight-layer');
         if (!highlightLayer) return;
         
