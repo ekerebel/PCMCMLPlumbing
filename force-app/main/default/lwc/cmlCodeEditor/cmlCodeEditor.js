@@ -173,6 +173,23 @@ export default class CmlCodeEditor extends LightningElement {
         // Get the text before cursor
         const beforeCursor = text.substring(0, cursorPos);
         
+        // Check if we're after ==" for picklist values
+        const picklistMatch = beforeCursor.match(/([\w]+)==\"([^\"]*)$/);
+        
+        if (picklistMatch) {
+            // We're after ==" - check if the attribute has a picklist
+            const attributeName = picklistMatch[1];
+            this.currentWord = picklistMatch[2]; // What's being typed after ="
+            
+            console.log('Picklist pattern detected for attribute:', attributeName, 'searchTerm:', this.currentWord);
+            
+            // Dispatch event to parent to get picklist values
+            this.dispatchEvent(new CustomEvent('requestpicklist', {
+                detail: { attributeName: attributeName, searchTerm: this.currentWord }
+            }));
+            return; // IMPORTANT: Don't continue to normal autocomplete
+        }
+        
         // Check if we're after a "[" character (context-aware)
         const bracketMatch = beforeCursor.match(/\[([^\]]*?)$/);
         
@@ -279,21 +296,34 @@ export default class CmlCodeEditor extends LightningElement {
         
         // Find the start of the current word
         const beforeCursor = text.substring(0, cursorPos);
-        const wordMatch = beforeCursor.match(/[\w]+$/);
-        const wordStart = wordMatch ? cursorPos - wordMatch[0].length : cursorPos;
         
-        // Determine what to insert based on type
-        let insertValue;
-        if (selectedOption.type === 'ProductComponentGroup' || selectedOption.type === 'Product') {
-            // For products, insert the actualName (human-readable)
-            insertValue = selectedOption.actualName || selectedOption.value;
-        } else {
-            // For attributes, insert the value
+        // Check if we're in picklist mode (after ==")
+        const picklistMatch = beforeCursor.match(/([\w]+)==\"([^\"]*)$/);
+        
+        let wordStart, insertValue, closingQuote = '';
+        
+        if (picklistMatch && selectedOption.type === 'PicklistValue') {
+            // Picklist value insertion
+            wordStart = cursorPos - picklistMatch[2].length;
             insertValue = selectedOption.value;
+            closingQuote = '"'; // Add closing quote
+        } else {
+            // Normal word insertion
+            const wordMatch = beforeCursor.match(/[\w]+$/);
+            wordStart = wordMatch ? cursorPos - wordMatch[0].length : cursorPos;
+            
+            // Determine what to insert based on type
+            if (selectedOption.type === 'ProductComponentGroup' || selectedOption.type === 'Product') {
+                // For products, insert the actualName (human-readable)
+                insertValue = selectedOption.actualName || selectedOption.value;
+            } else {
+                // For attributes, insert the value
+                insertValue = selectedOption.value;
+            }
         }
         
         // Replace the current word with the selected option
-        const newText = text.substring(0, wordStart) + insertValue + text.substring(cursorPos);
+        const newText = text.substring(0, wordStart) + insertValue + closingQuote + text.substring(cursorPos);
         this.value = newText;
         
         // Store the mapping for later translation (if needed)

@@ -220,12 +220,13 @@
                         <!-- Code Editor (when toggle is ON) -->
                         <template if:true={showCMLEditor}>
                             <div class="code-editor">
-                                <c-cml-code-editor
-                                    value={editCML}
-                                    attribute-definitions={attributeDefinitions}
-                                    onchange={handleCMLChange}
-                                    onrequestcontext={handleContextRequest}>
-                                </c-cml-code-editor>
+                    <c-cml-code-editor
+                        value={editCML}
+                        attribute-definitions={attributeDefinitions}
+                        onchange={handleCMLChange}
+                        onrequestcontext={handleContextRequest}
+                        onrequestpicklist={handlePicklistRequest}>
+                    </c-cml-code-editor>
                             </div>
                         </template>
                     </div>

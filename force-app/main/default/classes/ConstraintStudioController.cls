@@ -251,6 +251,49 @@ public with sharing class ConstraintStudioController {
     }
     
     @AuraEnabled(cacheable=true)
+    public static List<Map<String, String>> getPicklistValues(String recordId, String objectApiName, String attributeName) {
+        try {
+            List<Map<String, String>> result = new List<Map<String, String>>();
+            
+            // Find the AttributeDefinition for this attribute
+            List<AttributeDefinition> attrDefs = [
+                SELECT Id, PicklistId
+                FROM AttributeDefinition
+                WHERE DeveloperName = :attributeName
+                LIMIT 1
+            ];
+            
+            if (attrDefs.isEmpty() || attrDefs[0].PicklistId == null) {
+                return result; // No picklist found
+            }
+            
+            Id picklistId = attrDefs[0].PicklistId;
+            
+            // Get picklist values
+            List<AttributePicklistValue> picklistValues = [
+                SELECT Id, Value
+                FROM AttributePicklistValue
+                WHERE PicklistId = :picklistId
+                ORDER BY Value ASC
+            ];
+            
+            for (AttributePicklistValue pv : picklistValues) {
+                result.add(new Map<String, String>{
+                    'type' => 'PicklistValue',
+                    'value' => pv.Value,
+                    'displayName' => pv.Value,
+                    'color' => '#F59E0B' // Orange color for picklist values
+                });
+            }
+            
+            return result;
+            
+        } catch (Exception e) {
+            throw new AuraHandledException('Error fetching picklist values: ' + e.getMessage());
+        }
+    }
+    
+    @AuraEnabled(cacheable=true)
     public static List<Map<String, String>> getContextualProducts(String contextId, String contextType) {
         try {
             List<Map<String, String>> result = new List<Map<String, String>>();

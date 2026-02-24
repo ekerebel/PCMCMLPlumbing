@@ -8,6 +8,7 @@ import createCMLSnippet from '@salesforce/apex/ConstraintStudioController.create
 import getAttributeDefinitions from '@salesforce/apex/ConstraintStudioController.getAttributeDefinitions';
 import getProductComponentSuggestions from '@salesforce/apex/ConstraintStudioController.getProductComponentSuggestions';
 import getContextualProducts from '@salesforce/apex/ConstraintStudioController.getContextualProducts';
+import getPicklistValues from '@salesforce/apex/ConstraintStudioController.getPicklistValues';
 
 export default class ConstraintStudio extends LightningElement {
     @api recordId;
@@ -315,6 +316,31 @@ export default class ConstraintStudio extends LightningElement {
     
     handleToggleCML(event) {
         this.showCMLEditor = event.target.checked;
+    }
+    
+    async handlePicklistRequest(event) {
+        const { attributeName } = event.detail;
+        
+        try {
+            // Fetch picklist values for this attribute
+            const picklistValues = await getPicklistValues({
+                recordId: this.recordId,
+                objectApiName: this.objectApiName,
+                attributeName: attributeName
+            });
+            
+            console.log('Picklist values fetched for', attributeName, ':', picklistValues);
+            
+            // Show picklist suggestions in the code editor
+            const codeEditor = this.template.querySelector('c-cml-code-editor');
+            if (codeEditor) {
+                codeEditor.showContextualSuggestions(picklistValues);
+            } else {
+                console.error('Code editor not found');
+            }
+        } catch (error) {
+            console.error('Error fetching picklist values:', error);
+        }
     }
     
     async handleContextRequest(event) {
