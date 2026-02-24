@@ -4,7 +4,27 @@
     height: 100%;
 }
 
+.syntax-highlight-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    min-height: 400px;
+    padding: 12px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 1;
+}
+
 .code-textarea {
+    position: relative;
     width: 100%;
     min-height: 400px;
     padding: 12px;
@@ -14,8 +34,9 @@
     border: 1px solid #dddbda;
     border-radius: 4px;
     resize: vertical;
-    background-color: #ffffff;
+    background-color: transparent;
     color: #080707;
+    z-index: 2;
 }
 
 .code-textarea:focus {
@@ -69,4 +90,40 @@
 
 .autocomplete-dropdown::-webkit-scrollbar-thumb:hover {
     background: #706e6b;
+}
+
+/* Syntax highlighting colors */
+.syntax-keyword {
+    color: #0000FF;
+    font-weight: bold;
+}
+
+.syntax-string {
+    color: #A31515;
+}
+
+.syntax-number {
+    color: #098658;
+}
+
+.syntax-operator {
+    color: #000000;
+}
+
+.syntax-function {
+    color: #795E26;
+}
+
+.syntax-comment {
+    color: #008000;
+    font-style: italic;
+}
+
+.syntax-attribute {
+    color: #001080;
+}
+
+.syntax-product {
+    color: #7C3AED;
+    font-weight: 500;
 }

@@ -340,13 +340,50 @@ export default class ConstraintStudio extends LightningElement {
                 contextType: contextType
             });
             
+            console.log('Contextual products fetched:', contextualProducts);
+            
             // Show contextual suggestions in the code editor
             const codeEditor = this.template.querySelector('c-cml-code-editor');
             if (codeEditor) {
                 codeEditor.showContextualSuggestions(contextualProducts);
+            } else {
+                console.error('Code editor not found');
             }
         } catch (error) {
-            console.err
+            console.error('Error fetching contextual products:', error);
+        }
+    }
+    
+    async handleSave() {
+        if (!this.selectedSnippet) return;
+        
+        this.isSaving = true;
+        try {
+            // Translate display names back to IDs before saving
+            const cmlToSave = this.translateToIds(this.editCML);
+            
+            await saveCMLSnippet({
+                snippetId: this.selectedSnippet.Id,
+                label: this.editLabel,
+                cml: cmlToSave
+            });
+            
+            this.showToast('Success', 'CML Snippet saved successfully', 'success');
+            
+            // Reload snippets
+            await this.loadSnippets();
+            
+            // Update selected snippet
+            const updatedSnippet = this.snippets.find(s => s.Id === this.selectedSnippet.Id);
+            if (updatedSnippet) {
+                this.selectSnippet(updatedSnippet);
+            }
+        } catch (error) {
+            this.showToast('Error', 'Error saving CML Snippet: ' + error.body.message, 'error');
+        } finally {
+            this.isSaving = false;
+        }
+    }
     
     showToast(title, message, variant) {
         this.dispatchEvent(new ShowToastEvent({

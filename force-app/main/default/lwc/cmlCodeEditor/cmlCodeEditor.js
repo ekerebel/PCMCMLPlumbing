@@ -27,9 +27,74 @@ export default class CmlCodeEditor extends LightningElement {
         if (textarea && textarea.value !== this.internalValue) {
             textarea.value = this.internalValue;
         }
+        
+        // Update syntax highlighting
+        this.updateSyntaxHighlighting();
+    }
+    
+    updateSyntaxHighlighting() {
+        const highlightLayer = this.template.querySelector('.syntax-highlight-layer');
+        if (!highlightLayer) return;
+        
+        const highlighted = this.applySyntaxHighlighting(this.internalValue || '');
+        highlightLayer.innerHTML = highlighted;
+    }
+    
+    applySyntaxHighlighting(code) {
+        if (!code) return '';
+        
+        // Escape HTML
+        let highlighted = code
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        
+        // Highlight CML keywords
+        const keywords = ['constraint', 'require', 'message', 'setdefault', 'rule', 'when', 'then', 'and', 'or', 'not'];
+        keywords.forEach(keyword => {
+            const regex = new RegExp(`\\b(${keyword})\\b`, 'gi');
+            highlighted = highlighted.replace(regex, '<span class="syntax-keyword">$1</span>');
+        });
+        
+        // Highlight strings (single and double quotes)
+        highlighted = highlighted.replace(/(["'])(?:(?=(\\?))\2.)*?\1/g, '<span class="syntax-string">$&</span>');
+        
+        // Highlight numbers
+        highlighted = highlighted.replace(/\b(\d+\.?\d*)\b/g, '<span class="syntax-number">$1</span>');
+        
+        // Highlight functions (word followed by parenthesis)
+        highlighted = highlighted.replace(/\b([a-zA-Z_][\w]*)\s*\(/g, '<span class="syntax-function">$1</span>(');
+        
+        // Highlight operators
+        highlighted = highlighted.replace(/([+\-*/%=<>!&|]+)/g, '<span class="syntax-operator">$1</span>');
+        
+        // Highlight product references (REL_ProductComponentGroup_ or REL_ProductRelatedComponent_)
+        highlighted = highlighted.replace(/\b(REL_Product(?:ComponentGroup|RelatedComponent)_[\w]+)\b/g, '<span class="syntax-product">$1</span>');
+        
+        // Highlight attribute names (known attributes from suggestions)
+        if (this.attributeDefinitions && this.attributeDefinitions.length > 0) {
+            this.attributeDefinitions.forEach(attr => {
+                if (attr.type === 'Attribute' && attr.value) {
+                    const escapedValue = attr.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(`\\b(${escapedValue})\\b`, 'g');
+                    highlighted = highlighted.replace(regex, '<span class="syntax-attribute">$1</span>');
+                }
+            });
+        }
+        
+        return highlighted;
+    }
+    
+    escapeRegex(str) {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
     
     get filteredOptions() {
+        // If in contextual mode, use contextual suggestions
+        if (this.contextualMode && this.contextualSuggestions) {
+            return this.getContextualFilteredOptions();
+        }
+        
         if (!this.currentWord || this.currentWord.length < 2) {
             return [];
         }
@@ -111,19 +176,58 @@ export default class CmlCodeEditor extends LightningElement {
         if (bracketMatch) {
             // We're inside brackets - check what's before the "["
             const beforeBracket = beforeCursor.substring(0, beforeCursor.lastIndexOf('['));
-            const contextMatch = beforeBracket.match(/(REL_ProductComponentGroup_[\w]+|REL_ProductRelatedComponent_[\w]+)\s*$/);
+            
+            // Try to match REL_ format (ID format)
+            let contextMatch = beforeBracket.match(/(REL_ProductComponentGroup_[\w]+|REL_ProductRelatedComponent_[\w]+)\s*$/);
             
             if (contextMatch) {
-                // Found a context - request contextual suggestions
+                // Found a context in ID format
                 const contextValue = contextMatch[1];
                 this.currentWord = bracketMatch[1]; // What's being typed after "["
+                
+                console.log('Context detected (ID format):', contextValue, 'searchTerm:', this.currentWord);
                 
                 // Dispatch event to parent to get contextual suggestions
                 this.dispatchEvent(new CustomEvent('requestcontext', {
                     detail: { contextValue: contextValue, searchTerm: this.currentWord }
                 }));
-                return;
+                return; // IMPORTANT: Don't continue to normal autocomplete
             }
+            
+            // Try to match display name format (human-readable)
+            const displayNameMatch = beforeBracket.match(/([\w]+)\s*$/);
+            if (displayNameMatch) {
+                const displayName = displayNameMatch[1];
+                
+                // Look up the display name in attributeDefinitions to find the actual ID
+                const suggestion = this.attributeDefinitions.find(attr => 
+                    attr.actualName === displayName && 
+                    (attr.type === 'ProductComponentGroup' || attr.type === 'Product')
+                );
+                
+                if (suggestion) {
+                    this.currentWord = bracketMatch[1]; // What's being typed after "["
+                    
+                    console.log('Context detected (display name):', displayName, '-> ID:', suggestion.value, 'searchTerm:', this.currentWord);
+                    
+                    // Dispatch event to parent to get contextual suggestions
+                    this.dispatchEvent(new CustomEvent('requestcontext', {
+                        detail: { contextValue: suggestion.value, searchTerm: this.currentWord }
+                    }));
+                    return;
+                }
+            }
+            
+            // Inside brackets but no context found - hide autocomplete
+            console.log('Inside brackets but no context found');
+            this.hideAutocomplete();
+            return;
+        }
+        
+        // Reset contextual mode if not in brackets
+        if (this.contextualMode) {
+            this.contextualMode = false;
+            this.contextualSuggestions = null;
         }
         
         // Normal autocomplete (not in brackets)
@@ -228,11 +332,16 @@ export default class CmlCodeEditor extends LightningElement {
     
     @api
     showContextualSuggestions(suggestions) {
-        // Temporarily replace attributeDefinitions with contextual suggestions
-        const originalDefs = this.attributeDefinitions;
-        this.attributeDefinitions = suggestions;
+        console.log('showContextualSuggestions called with:', suggestions);
         
-        const options = this.filteredOptions;
+        // Store original definitions
+        this.contextualMode = true;
+        this.contextualSuggestions = suggestions;
+        
+        // Force re-render of filtered options
+        const options = this.getContextualFilteredOptions();
+        
+        console.log('Filtered contextual options:', options);
         
         if (options.length > 0) {
             this.selectedIndex = 0;
@@ -241,18 +350,58 @@ export default class CmlCodeEditor extends LightningElement {
                 this.calculateAutocompletePosition(textarea);
             }
             this.showAutocomplete = true;
+            console.log('Showing autocomplete with', options.length, 'options');
+        } else {
+            console.log('No options to show');
+        }
+    }
+    
+    getContextualFilteredOptions() {
+        if (!this.contextualSuggestions || this.contextualSuggestions.length === 0) {
+            return [];
         }
         
-        // Restore original definitions after showing
-        setTimeout(() => {
-            this.attributeDefinitions = originalDefs;
-        }, 100);
+        const searchTerm = this.currentWord ? this.currentWord.toLowerCase() : '';
+        
+        const filtered = this.contextualSuggestions
+            .filter(attr => {
+                if (!searchTerm) return true;
+                const value = attr.value || attr;
+                const displayName = attr.displayName || attr;
+                const actualName = attr.actualName || value;
+                return value.toLowerCase().includes(searchTerm) || 
+                       displayName.toLowerCase().includes(searchTerm) ||
+                       actualName.toLowerCase().includes(searchTerm);
+            });
+        
+        return filtered
+            .map((attr, index) => {
+                const isSelected = index === this.selectedIndex;
+                const value = attr.value || attr;
+                const displayName = attr.displayName || attr;
+                const actualName = attr.actualName || value;
+                const color = attr.color || 'black';
+                const type = attr.type || 'Product';
+                
+                return {
+                    value: value,
+                    displayName: displayName,
+                    actualName: actualName,
+                    color: color,
+                    type: type,
+                    isSelected: isSelected,
+                    className: isSelected ? 'autocomplete-option selected' : 'autocomplete-option',
+                    style: `color: ${color};`
+                };
+            });
     }
     
     hideAutocomplete() {
         this.showAutocomplete = false;
         this.currentWord = '';
         this.selectedIndex = 0;
+        this.contextualMode = false;
+        this.contextualSuggestions = null;
     }
     
     handleBlur() {
