@@ -1,47 +1,43 @@
 <template>
-    <!-- Tile matching the Rules page design -->
-    <div class="tile-card">
-        <div class="tile-header">
-            <div class="icon-container">
-                <lightning-icon icon-name="custom:custom63" size="medium"></lightning-icon>
-            </div>
-            <div class="tile-content">
-                <h3 class="tile-title">CML Generator</h3>
-                <p class="tile-description">
-                    Generate CML from CML Snippets and update the PCM_All ExpressionSet.
-                </p>
-                <p class="tile-meta">
-                    Available snippets: {snippetCount}
-                </p>
-            </div>
+    <!-- Tile matching the Rules page design exactly -->
+    <div class="rules-tile">
+        <div class="tile-icon">
+            <lightning-icon icon-name="custom:custom63" size="medium"></lightning-icon>
         </div>
-        
-        <template if:false={pcmAllExists}>
-            <div class="slds-notify slds-notify_alert slds-alert_warning slds-m-top_small" role="alert">
-                <span class="slds-assistive-text">warning</span>
-                <h2 class="slds-text-body_small">
-                    <lightning-icon icon-name="utility:warning" alternative-text="Warning" size="x-small" class="slds-m-right_x-small"></lightning-icon>
-                    PCM_All ExpressionSet not found in this org.
-                </h2>
+        <div class="tile-separator"></div>
+        <div class="tile-content">
+            <h3 class="tile-title">CML Generator</h3>
+            <p class="tile-description">
+                Available snippets: {snippetCount}
+            </p>
+            
+            <template if:false={pcmAllExists}>
+                <div class="slds-notify slds-notify_alert slds-alert_warning slds-m-top_small" role="alert">
+                    <span class="slds-assistive-text">warning</span>
+                    <h2 class="slds-text-body_small">
+                        <lightning-icon icon-name="utility:warning" alternative-text="Warning" size="x-small" class="slds-m-right_x-small"></lightning-icon>
+                        PCM_All ExpressionSet not found in this org.
+                    </h2>
+                </div>
+            </template>
+            
+            <div class="button-container">
+                <lightning-button
+                    variant="brand"
+                    label="Generate CML"
+                    title="Generate CML from snippets"
+                    onclick={handleGenerateCML}
+                    disabled={isGenerating}
+                    icon-name="utility:refresh"
+                ></lightning-button>
             </div>
-        </template>
-        
-        <div class="button-container">
-            <lightning-button
-                variant="brand"
-                label="Generate CML"
-                title="Generate CML from snippets"
-                onclick={handleGenerateCML}
-                disabled={isGenerating}
-                icon-name="utility:refresh"
-            ></lightning-button>
+            
+            <template if:true={isGenerating}>
+                <div class="slds-m-top_small slds-text-align_center">
+                    <lightning-spinner alternative-text="Generating CML..." size="small"></lightning-spinner>
+                    <p class="slds-text-body_small slds-m-top_small">Generating CML...</p>
+                </div>
+            </template>
         </div>
-        
-        <template if:true={isGenerating}>
-            <div class="slds-m-top_small slds-text-align_center">
-                <lightning-spinner alternative-text="Generating CML..." size="small"></lightning-spinner>
-                <p class="slds-text-body_small slds-m-top_small">Generating CML...</p>
-            </div>
-        </template>
     </div>
 </template>

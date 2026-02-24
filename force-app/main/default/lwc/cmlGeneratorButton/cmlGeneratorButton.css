@@ -1,55 +1,55 @@
-.tile-card {
-    border: 1px solid #dddbda;
-    border-radius: 0.25rem;
-    background-color: white;
-    padding: 1rem;
-    transition: box-shadow 0.1s ease-in-out;
-}
-
-.tile-card:hover {
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.tile-header {
+/* Match the exact styling of Qualification Rules tiles */
+.rules-tile {
     display: flex;
     align-items: flex-start;
-    gap: 1rem;
-    margin-bottom: 1rem;
+    padding: 1.5rem 1.5rem 1.5rem 1.5rem;
+    border: 1px solid #c9c9c9;
+    border-radius: 0.25rem;
+    background-color: white;
+    min-height: 120px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
-.icon-container {
+.tile-icon {
     flex-shrink: 0;
+    margin-right: 1.25rem;
+    width: 3rem;
+    height: 3rem;
 }
 
-.icon-container lightning-icon {
+.tile-icon lightning-icon {
     --slds-c-icon-color-background: #4bca81;
     --slds-c-icon-color-foreground: white;
-    border-radius: 50%;
+    --slds-c-icon-radius-border: 50%;
+}
+
+.tile-separator {
+    width: 1px;
+    background-color: #c9c9c9;
+    align-self: stretch;
+    margin-right: 1.25rem;
+    flex-shrink: 0;
 }
 
 .tile-content {
     flex: 1;
+    min-width: 0;
 }
 
 .tile-title {
-    font-size: 1.125rem;
+    font-size: 1rem;
     font-weight: 700;
-    color: #080707;
+    color: #0176d3;
     margin: 0 0 0.5rem 0;
     line-height: 1.25;
 }
 
 .tile-description {
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     color: #3e3e3c;
-    margin: 0 0 0.25rem 0;
-    line-height: 1.5;
-}
-
-.tile-meta {
-    font-size: 0.75rem;
-    color: #706e6b;
     margin: 0;
+    line-height: 1.5;
 }
 
 .button-container {
