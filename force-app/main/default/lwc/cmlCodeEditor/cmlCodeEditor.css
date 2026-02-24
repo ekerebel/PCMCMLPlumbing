@@ -33,7 +33,8 @@
     max-height: 200px;
     overflow-y: auto;
     z-index: 1000;
-    min-width: 200px;
+    min-width: 250px;
+    margin-top: 24px; /* Move down to not obstruct typing */
 }
 
 .autocomplete-option {

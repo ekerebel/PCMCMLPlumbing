@@ -36,12 +36,32 @@ export default class CmlCodeEditor extends LightningElement {
         
         const searchTerm = this.currentWord.toLowerCase();
         return this.attributeDefinitions
-            .filter(attr => attr.toLowerCase().includes(searchTerm))
-            .map((attr, index) => ({
-                value: attr,
-                isSelected: index === this.selectedIndex,
-                className: index === this.selectedIndex ? 'autocomplete-option selected' : 'autocomplete-option'
-            }));
+            .filter(attr => {
+                // Filter by value or displayName
+                const value = attr.value || attr;
+                const displayName = attr.displayName || attr;
+                return value.toLowerCase().includes(searchTerm) || 
+                       displayName.toLowerCase().includes(searchTerm);
+            })
+            .map((attr, index) => {
+                const isSelected = index === this.selectedIndex;
+                const value = attr.value || attr;
+                const displayName = attr.displayName || attr;
+                const actualName = attr.actualName || value;
+                const color = attr.color || 'black';
+                const type = attr.type || 'Attribute';
+                
+                return {
+                    value: value,
+                    displayName: displayName,
+                    actualName: actualName,
+                    color: color,
+                    type: type,
+                    isSelected: isSelected,
+                    className: isSelected ? 'autocomplete-option selected' : 'autocomplete-option',
+                    style: `color: ${color};`
+                };
+            });
     }
     
     get autocompleteStyle() {
@@ -82,8 +102,31 @@ export default class CmlCodeEditor extends LightningElement {
         const text = textarea.value;
         const cursorPos = textarea.selectionStart;
         
-        // Get the word at cursor position
+        // Get the text before cursor
         const beforeCursor = text.substring(0, cursorPos);
+        
+        // Check if we're after a "[" character (context-aware)
+        const bracketMatch = beforeCursor.match(/\[([^\]]*?)$/);
+        
+        if (bracketMatch) {
+            // We're inside brackets - check what's before the "["
+            const beforeBracket = beforeCursor.substring(0, beforeCursor.lastIndexOf('['));
+            const contextMatch = beforeBracket.match(/(REL_ProductComponentGroup_[\w]+|REL_ProductRelatedComponent_[\w]+)\s*$/);
+            
+            if (contextMatch) {
+                // Found a context - request contextual suggestions
+                const contextValue = contextMatch[1];
+                this.currentWord = bracketMatch[1]; // What's being typed after "["
+                
+                // Dispatch event to parent to get contextual suggestions
+                this.dispatchEvent(new CustomEvent('requestcontext', {
+                    detail: { contextValue: contextValue, searchTerm: this.currentWord }
+                }));
+                return;
+            }
+        }
+        
+        // Normal autocomplete (not in brackets)
         const wordMatch = beforeCursor.match(/[\w]+$/);
         
         if (wordMatch && wordMatch[0].length >= 2) {
@@ -122,7 +165,7 @@ export default class CmlCodeEditor extends LightningElement {
     insertAutocomplete() {
         if (this.filteredOptions.length === 0) return;
         
-        const selectedOption = this.filteredOptions[this.selectedIndex].value;
+        const selectedOption = this.filteredOptions[this.selectedIndex];
         const textarea = this.template.querySelector('textarea');
         const text = textarea.value;
         const cursorPos = textarea.selectionStart;
@@ -132,9 +175,30 @@ export default class CmlCodeEditor extends LightningElement {
         const wordMatch = beforeCursor.match(/[\w]+$/);
         const wordStart = wordMatch ? cursorPos - wordMatch[0].length : cursorPos;
         
+        // Determine what to insert based on type
+        let insertValue;
+        if (selectedOption.type === 'ProductComponentGroup' || selectedOption.type === 'Product') {
+            // For products, insert the actualName (human-readable)
+            insertValue = selectedOption.actualName || selectedOption.value;
+        } else {
+            // For attributes, insert the value
+            insertValue = selectedOption.value;
+        }
+        
         // Replace the current word with the selected option
-        const newText = text.substring(0, wordStart) + selectedOption + text.substring(cursorPos);
+        const newText = text.substring(0, wordStart) + insertValue + text.substring(cursorPos);
         this.value = newText;
+        
+        // Store the mapping for later translation (if needed)
+        if (selectedOption.type === 'ProductComponentGroup' || selectedOption.type === 'Product') {
+            this.dispatchEvent(new CustomEvent('idmapping', {
+                detail: {
+                    displayName: insertValue,
+                    actualValue: selectedOption.value,
+                    type: selectedOption.type
+                }
+            }));
+        }
         
         // Dispatch change event
         this.dispatchEvent(new CustomEvent('change', {
@@ -145,7 +209,7 @@ export default class CmlCodeEditor extends LightningElement {
         
         // Set cursor position after the inserted text
         setTimeout(() => {
-            textarea.selectionStart = textarea.selectionEnd = wordStart + selectedOption.length;
+            textarea.selectionStart = textarea.selectionEnd = wordStart + insertValue.length;
             textarea.focus();
         }, 0);
     }
@@ -160,6 +224,29 @@ export default class CmlCodeEditor extends LightningElement {
     handleOptionMouseDown(event) {
         // Prevent blur when clicking on options
         event.preventDefault();
+    }
+    
+    @api
+    showContextualSuggestions(suggestions) {
+        // Temporarily replace attributeDefinitions with contextual suggestions
+        const originalDefs = this.attributeDefinitions;
+        this.attributeDefinitions = suggestions;
+        
+        const options = this.filteredOptions;
+        
+        if (options.length > 0) {
+            this.selectedIndex = 0;
+            const textarea = this.template.querySelector('textarea');
+            if (textarea) {
+                this.calculateAutocompletePosition(textarea);
+            }
+            this.showAutocomplete = true;
+        }
+        
+        // Restore original definitions after showing
+        setTimeout(() => {
+            this.attributeDefinitions = originalDefs;
+        }, 100);
     }
     
     hideAutocomplete() {

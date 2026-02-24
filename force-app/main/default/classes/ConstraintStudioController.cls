@@ -82,7 +82,7 @@ public with sharing class ConstraintStudioController {
     }
     
     @AuraEnabled(cacheable=true)
-    public static List<String> getAttributeDefinitions(String recordId, String objectApiName) {
+    public static List<Map<String, String>> getAttributeDefinitions(String recordId, String objectApiName) {
         try {
             Set<String> attributeNames = new Set<String>();
             
@@ -134,13 +134,171 @@ public with sharing class ConstraintStudioController {
                 }
             }
             
-            // Convert to sorted list
-            List<String> result = new List<String>(attributeNames);
-            result.sort();
+            // Convert to list with type and display name
+            List<Map<String, String>> result = new List<Map<String, String>>();
+            List<String> sortedNames = new List<String>(attributeNames);
+            sortedNames.sort();
+            
+            for (String attrName : sortedNames) {
+                result.add(new Map<String, String>{
+                    'type' => 'Attribute',
+                    'value' => attrName,
+                    'displayName' => 'Attribute: ' + attrName,
+                    'color' => 'blue'
+                });
+            }
+            
             return result;
             
         } catch (Exception e) {
             throw new AuraHandledException('Error fetching attribute definitions: ' + e.getMessage());
+        }
+    }
+    
+    @AuraEnabled(cacheable=true)
+    public static List<Map<String, String>> getProductComponentSuggestions(String recordId) {
+        try {
+            List<Map<String, String>> result = new List<Map<String, String>>();
+            
+            // Get all ProductComponentGroups for this Product2
+            List<ProductComponentGroup> pcgList = [
+                SELECT Id, Name, MaxBundleComponents
+                FROM ProductComponentGroup
+                WHERE ParentProductId = :recordId
+            ];
+            
+            // Get all ProductRelatedComponents for these groups
+            Set<Id> pcgIds = new Set<Id>();
+            for (ProductComponentGroup pcg : pcgList) {
+                pcgIds.add(pcg.Id);
+            }
+            
+            List<ProductRelatedComponent> prcList = [
+                SELECT Id, ProductComponentGroupId, ChildProductId, ChildProduct.Name, ChildProduct.BasedOnId
+                FROM ProductRelatedComponent
+                WHERE ProductComponentGroupId IN :pcgIds
+            ];
+            
+            // Group PRCs by PCG
+            Map<Id, List<ProductRelatedComponent>> prcByPcg = new Map<Id, List<ProductRelatedComponent>>();
+            for (ProductRelatedComponent prc : prcList) {
+                if (!prcByPcg.containsKey(prc.ProductComponentGroupId)) {
+                    prcByPcg.put(prc.ProductComponentGroupId, new List<ProductRelatedComponent>());
+                }
+                prcByPcg.get(prc.ProductComponentGroupId).add(prc);
+            }
+            
+            for (ProductComponentGroup pcg : pcgList) {
+                List<ProductRelatedComponent> relatedComponents = prcByPcg.get(pcg.Id);
+                if (relatedComponents == null || relatedComponents.size() == 0) {
+                    continue;
+                }
+                
+                // Check if MaxBundleComponents == 1 and all child products have same BasedOnId
+                if (pcg.MaxBundleComponents == 1) {
+                    Id firstBasedOnId = null;
+                    Boolean allSameBasedOn = true;
+                    Boolean allHaveBasedOn = true;
+                    
+                    for (ProductRelatedComponent prc : relatedComponents) {
+                        if (prc.ChildProduct.BasedOnId == null) {
+                            allHaveBasedOn = false;
+                            break;
+                        }
+                        if (firstBasedOnId == null) {
+                            firstBasedOnId = prc.ChildProduct.BasedOnId;
+                        } else if (firstBasedOnId != prc.ChildProduct.BasedOnId) {
+                            allSameBasedOn = false;
+                            break;
+                        }
+                    }
+                    
+                    // If conditions met, add ProductComponentGroup
+                    if (allSameBasedOn && allHaveBasedOn) {
+                        String cleanName = pcg.Name.replaceAll('[^a-zA-Z0-9]', '_');
+                        result.add(new Map<String, String>{
+                            'type' => 'ProductComponentGroup',
+                            'value' => 'REL_ProductComponentGroup_' + pcg.Id,
+                            'displayName' => 'Product Component Group: ' + cleanName,
+                            'actualName' => cleanName,
+                            'color' => 'purple',
+                            'recordId' => pcg.Id
+                        });
+                        continue; // Don't add individual products for this group
+                    }
+                }
+                
+                // Add individual ProductRelatedComponents
+                for (ProductRelatedComponent prc : relatedComponents) {
+                    String cleanName = prc.ChildProduct.Name.replaceAll('[^a-zA-Z0-9]', '_');
+                    result.add(new Map<String, String>{
+                        'type' => 'Product',
+                        'value' => 'REL_ProductRelatedComponent_' + prc.Id,
+                        'displayName' => 'Product: ' + cleanName,
+                        'actualName' => cleanName,
+                        'color' => 'green',
+                        'recordId' => prc.Id,
+                        'childProductId' => prc.ChildProductId
+                    });
+                }
+            }
+            
+            return result;
+            
+        } catch (Exception e) {
+            throw new AuraHandledException('Error fetching product component suggestions: ' + e.getMessage());
+        }
+    }
+    
+    @AuraEnabled(cacheable=true)
+    public static List<Map<String, String>> getContextualProducts(String contextId, String contextType) {
+        try {
+            List<Map<String, String>> result = new List<Map<String, String>>();
+            
+            if (contextType == 'ProductComponentGroup') {
+                // Get all products for this ProductComponentGroup
+                List<ProductRelatedComponent> prcList = [
+                    SELECT Id, ChildProductId, ChildProduct.Name
+                    FROM ProductRelatedComponent
+                    WHERE ProductComponentGroupId = :contextId
+                ];
+                
+                for (ProductRelatedComponent prc : prcList) {
+                    String cleanName = prc.ChildProduct.Name.replaceAll('[^a-zA-Z0-9]', '_');
+                    result.add(new Map<String, String>{
+                        'type' => 'Product',
+                        'value' => 'Product2:' + prc.ChildProductId,
+                        'displayName' => 'Product: ' + cleanName,
+                        'actualName' => cleanName,
+                        'color' => 'green',
+                        'recordId' => prc.ChildProductId
+                    });
+                }
+                
+            } else if (contextType == 'ProductRelatedComponent') {
+                // Get the specific product for this ProductRelatedComponent
+                ProductRelatedComponent prc = [
+                    SELECT Id, ChildProductId, ChildProduct.Name
+                    FROM ProductRelatedComponent
+                    WHERE Id = :contextId
+                    LIMIT 1
+                ];
+                
+                String cleanName = prc.ChildProduct.Name.replaceAll('[^a-zA-Z0-9]', '_');
+                result.add(new Map<String, String>{
+                    'type' => 'Product',
+                    'value' => 'Product2:' + prc.ChildProductId,
+                    'displayName' => 'Product: ' + cleanName,
+                    'actualName' => cleanName,
+                    'color' => 'green',
+                    'recordId' => prc.ChildProductId
+                });
+            }
+            
+            return result;
+            
+        } catch (Exception e) {
+            throw new AuraHandledException('Error fetching contextual products: ' + e.getMessage());
         }
     }
 }

@@ -6,6 +6,8 @@ import deleteCMLSnippet from '@salesforce/apex/ConstraintStudioController.delete
 import saveCMLSnippet from '@salesforce/apex/ConstraintStudioController.saveCMLSnippet';
 import createCMLSnippet from '@salesforce/apex/ConstraintStudioController.createCMLSnippet';
 import getAttributeDefinitions from '@salesforce/apex/ConstraintStudioController.getAttributeDefinitions';
+import getProductComponentSuggestions from '@salesforce/apex/ConstraintStudioController.getProductComponentSuggestions';
+import getContextualProducts from '@salesforce/apex/ConstraintStudioController.getContextualProducts';
 
 export default class ConstraintStudio extends LightningElement {
     @api recordId;
@@ -27,8 +29,11 @@ export default class ConstraintStudio extends LightningElement {
     @track showCMLEditor = false;
     @track isSaving = false;
     @track attributeDefinitions = [];
+    @track productComponentSuggestions = [];
+    @track idMappings = {}; // Store display name -> ID mappings
     
     wiredSnippetsResult;
+    allSuggestions = []; // Store all suggestions for reverse lookup
     
     @wire(getAttributeDefinitions, {
         recordId: '$recordId',
@@ -36,10 +41,85 @@ export default class ConstraintStudio extends LightningElement {
     })
     wiredAttributeDefinitions(result) {
         if (result.data) {
-            this.attributeDefinitions = result.data;
+            this.updateCombinedSuggestions('attributes', result.data);
         } else if (result.error) {
             console.error('Error loading attribute definitions:', result.error);
         }
+    }
+    
+    @wire(getProductComponentSuggestions, {
+        recordId: '$recordId'
+    })
+    wiredProductComponentSuggestions(result) {
+        if (this.objectApiName === 'Product2') {
+            if (result.data) {
+                this.updateCombinedSuggestions('products', result.data);
+            } else if (result.error) {
+                console.error('Error loading product component suggestions:', result.error);
+            }
+        }
+    }
+    
+    updateCombinedSuggestions(source, data) {
+        if (source === 'attributes') {
+            this.attributeDefinitions = [...data];
+        } else if (source === 'products') {
+            this.productComponentSuggestions = [...data];
+        }
+        
+        // Combine both sources
+        const combined = [
+            ...this.attributeDefinitions,
+            ...this.productComponentSuggestions
+        ];
+        
+        // Store all suggestions for reverse lookup
+        this.allSuggestions = combined;
+        
+        // Pass combined list to code editor
+        this.attributeDefinitions = combined;
+    }
+    
+    // Translate display names to IDs before saving
+    translateToIds(cmlText) {
+        if (!cmlText) return cmlText;
+        
+        let translated = cmlText;
+        
+        // Find all suggestions and replace display names with IDs
+        this.allSuggestions.forEach(suggestion => {
+            if (suggestion.actualName && suggestion.value && 
+                (suggestion.type === 'ProductComponentGroup' || suggestion.type === 'Product')) {
+                // Replace actualName with value (ID format)
+                const regex = new RegExp('\\b' + this.escapeRegex(suggestion.actualName) + '\\b', 'g');
+                translated = translated.replace(regex, suggestion.value);
+            }
+        });
+        
+        return translated;
+    }
+    
+    // Translate IDs to display names when loading
+    translateToDisplayNames(cmlText) {
+        if (!cmlText) return cmlText;
+        
+        let translated = cmlText;
+        
+        // Find all REL_ patterns and replace with display names
+        this.allSuggestions.forEach(suggestion => {
+            if (suggestion.value && suggestion.actualName && 
+                (suggestion.type === 'ProductComponentGroup' || suggestion.type === 'Product')) {
+                // Replace value (ID format) with actualName
+                const regex = new RegExp('\\b' + this.escapeRegex(suggestion.value) + '\\b', 'g');
+                translated = translated.replace(regex, suggestion.actualName);
+            }
+        });
+        
+        return translated;
+    }
+    
+    escapeRegex(str) {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
     
     connectedCallback() {
@@ -216,7 +296,8 @@ export default class ConstraintStudio extends LightningElement {
         console.log('snippet.CML__c:', snippet.CML__c);
         this.selectedSnippet = snippet;
         this.editLabel = snippet.Label__c || '';
-        this.editCML = snippet.CML__c || '';
+        // Translate IDs to display names for editing
+        this.editCML = this.translateToDisplayNames(snippet.CML__c || '');
         console.log('editCML set to:', this.editCML);
         // Show CML editor by default for new snippets
         this.showCMLEditor = isNewSnippet;
@@ -236,33 +317,36 @@ export default class ConstraintStudio extends LightningElement {
         this.showCMLEditor = event.target.checked;
     }
     
-    async handleSave() {
-        if (!this.selectedSnippet) return;
+    async handleContextRequest(event) {
+        const { contextValue, searchTerm } = event.detail;
         
-        this.isSaving = true;
+        // Extract ID and type from contextValue
+        let contextId, contextType;
+        
+        if (contextValue.startsWith('REL_ProductComponentGroup_')) {
+            contextId = contextValue.replace('REL_ProductComponentGroup_', '');
+            contextType = 'ProductComponentGroup';
+        } else if (contextValue.startsWith('REL_ProductRelatedComponent_')) {
+            contextId = contextValue.replace('REL_ProductRelatedComponent_', '');
+            contextType = 'ProductRelatedComponent';
+        } else {
+            return; // Unknown context
+        }
+        
         try {
-            await saveCMLSnippet({
-                snippetId: this.selectedSnippet.Id,
-                label: this.editLabel,
-                cml: this.editCML
+            // Fetch contextual products
+            const contextualProducts = await getContextualProducts({
+                contextId: contextId,
+                contextType: contextType
             });
             
-            this.showToast('Success', 'CML Snippet saved successfully', 'success');
-            
-            // Reload snippets
-            await this.loadSnippets();
-            
-            // Update selected snippet
-            const updatedSnippet = this.snippets.find(s => s.Id === this.selectedSnippet.Id);
-            if (updatedSnippet) {
-                this.selectSnippet(updatedSnippet);
+            // Show contextual suggestions in the code editor
+            const codeEditor = this.template.querySelector('c-cml-code-editor');
+            if (codeEditor) {
+                codeEditor.showContextualSuggestions(contextualProducts);
             }
         } catch (error) {
-            this.showToast('Error', 'Error saving CML Snippet: ' + error.body.message, 'error');
-        } finally {
-            this.isSaving = false;
-        }
-    }
+            console.err
     
     showToast(title, message, variant) {
         this.dispatchEvent(new ShowToastEvent({
