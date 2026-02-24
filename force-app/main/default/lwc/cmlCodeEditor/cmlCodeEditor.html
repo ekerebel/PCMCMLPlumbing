@@ -1,0 +1,27 @@
+<template>
+    <div class="code-editor-container">
+        <textarea
+            class="code-textarea"
+            value={value}
+            oninput={handleInput}
+            onkeydown={handleKeyDown}
+            onblur={handleBlur}
+            placeholder="Enter CML code..."
+            spellcheck="false">
+        </textarea>
+        
+        <template if:true={showAutocomplete}>
+            <div class="autocomplete-dropdown" style={autocompleteStyle} onmousedown={handleOptionMouseDown}>
+                <template for:each={filteredOptions} for:item="option" for:index="index">
+                    <div
+                        key={option.value}
+                        class={option.className}
+                        data-index={index}
+                        onclick={handleOptionClick}>
+                        {option.value}
+                    </div>
+                </template>
+            </div>
+        </template>
+    </div>
+</template>
