@@ -41,41 +41,84 @@ public with sharing class ConstraintStudioController {
     }
     
     /**
-     * @description Transforms Product2 IDs in CML back to Product2 Names for display
-     * @param cml The CML string containing Product2_<ID> references
-     * @return String The CML with Product2 names instead of IDs
+     * @description Transforms Product2 IDs and ProductRelatedComponent IDs in CML back to names for display
+     * @param cml The CML string containing Product2_<ID> and REL_ProductRelatedComponent_<ID> references
+     * @return String The CML with names instead of IDs
      */
     private static String transformProduct2IdsToNames(String cml) {
-        // Pattern to match Product2_<ID>
-        Pattern product2Pattern = Pattern.compile('Product2_([a-zA-Z0-9]{15,18})');
-        Matcher matcher = product2Pattern.matcher(cml);
+        String result = cml;
         
-        // Collect all Product2 IDs
-        Set<Id> product2Ids = new Set<Id>();
-        while (matcher.find()) {
+        // First, handle REL_ProductRelatedComponent_<ID>[Product2_<ID>] patterns
+        Pattern prcPattern = Pattern.compile('REL_ProductRelatedComponent_([a-zA-Z0-9]{15,18})\\[Product2_([a-zA-Z0-9]{15,18})\\]');
+        Matcher prcMatcher = prcPattern.matcher(cml);
+        
+        // Collect all ProductRelatedComponent IDs
+        Set<Id> prcIds = new Set<Id>();
+        while (prcMatcher.find()) {
             try {
-                product2Ids.add(matcher.group(1));
+                prcIds.add(prcMatcher.group(1));
             } catch (Exception e) {
                 // Invalid ID, skip
             }
         }
         
-        if (product2Ids.isEmpty()) {
-            return cml;
+        if (!prcIds.isEmpty()) {
+            // Query ProductRelatedComponent with group and product names
+            Map<Id, Map<String, String>> prcDataMap = new Map<Id, Map<String, String>>();
+            for (ProductRelatedComponent prc : [
+                SELECT Id, ProductComponentGroup.Name, ChildProduct.Name
+                FROM ProductRelatedComponent
+                WHERE Id IN :prcIds
+            ]) {
+                String groupCleanName = prc.ProductComponentGroup.Name.replaceAll('[^a-zA-Z0-9]', '_');
+                String productCleanName = prc.ChildProduct.Name.replaceAll('[^a-zA-Z0-9]', '_');
+                prcDataMap.put(prc.Id, new Map<String, String>{
+                    'groupName' => groupCleanName,
+                    'productName' => productCleanName
+                });
+            }
+            
+            // Replace REL_ProductRelatedComponent_<ID>[Product2_<ID>] with GroupName[ProductName]
+            prcMatcher.reset();
+            while (prcMatcher.find()) {
+                String prcId = prcMatcher.group(1);
+                String product2Id = prcMatcher.group(2);
+                if (prcDataMap.containsKey(prcId)) {
+                    Map<String, String> data = prcDataMap.get(prcId);
+                    String replacement = data.get('groupName') + '[' + data.get('productName') + ']';
+                    String pattern = 'REL_ProductRelatedComponent_' + prcId + '\\[Product2_' + product2Id + '\\]';
+                    result = result.replaceAll(pattern, replacement);
+                }
+            }
         }
         
-        // Query Product2 names
-        Map<Id, String> idToNameMap = new Map<Id, String>();
-        for (Product2 p : [SELECT Id, Name FROM Product2 WHERE Id IN :product2Ids]) {
-            String cleanName = p.Name.replaceAll('[^a-zA-Z0-9]', '_');
-            idToNameMap.put(p.Id, cleanName);
+        // Then handle remaining Product2_<ID> patterns (not in brackets)
+        Pattern product2Pattern = Pattern.compile('Product2_([a-zA-Z0-9]{15,18})');
+        Matcher product2Matcher = product2Pattern.matcher(result);
+        
+        // Collect all Product2 IDs
+        Set<Id> product2Ids = new Set<Id>();
+        while (product2Matcher.find()) {
+            try {
+                product2Ids.add(product2Matcher.group(1));
+            } catch (Exception e) {
+                // Invalid ID, skip
+            }
         }
         
-        // Replace IDs with names
-        String result = cml;
-        for (Id productId : idToNameMap.keySet()) {
-            String productName = idToNameMap.get(productId);
-            result = result.replaceAll('Product2_' + productId, productName);
+        if (!product2Ids.isEmpty()) {
+            // Query Product2 names
+            Map<Id, String> idToNameMap = new Map<Id, String>();
+            for (Product2 p : [SELECT Id, Name FROM Product2 WHERE Id IN :product2Ids]) {
+                String cleanName = p.Name.replaceAll('[^a-zA-Z0-9]', '_');
+                idToNameMap.put(p.Id, cleanName);
+            }
+            
+            // Replace IDs with names
+            for (Id productId : idToNameMap.keySet()) {
+                String productName = idToNameMap.get(productId);
+                result = result.replaceAll('Product2_' + productId, productName);
+            }
         }
         
         return result;
@@ -304,6 +347,37 @@ public with sharing class ConstraintStudioController {
             
         } catch (Exception e) {
             throw new AuraHandledException('Error fetching picklist values: ' + e.getMessage());
+        }
+    }
+    
+    @AuraEnabled(cacheable=true)
+    public static Map<String, String> findProductRelatedComponent(String productComponentGroupId, String product2Id) {
+        try {
+            // Find the ProductRelatedComponent that links this group to this product
+            List<ProductRelatedComponent> prcList = [
+                SELECT Id, ProductComponentGroup.Name, ChildProduct.Name
+                FROM ProductRelatedComponent
+                WHERE ProductComponentGroupId = :productComponentGroupId
+                AND ChildProductId = :product2Id
+                LIMIT 1
+            ];
+            
+            if (prcList.isEmpty()) {
+                return null;
+            }
+            
+            ProductRelatedComponent prc = prcList[0];
+            String groupCleanName = prc.ProductComponentGroup.Name.replaceAll('[^a-zA-Z0-9]', '_');
+            String productCleanName = prc.ChildProduct.Name.replaceAll('[^a-zA-Z0-9]', '_');
+            
+            return new Map<String, String>{
+                'prcId' => prc.Id,
+                'groupName' => groupCleanName,
+                'productName' => productCleanName
+            };
+            
+        } catch (Exception e) {
+            throw new AuraHandledException('Error finding ProductRelatedComponent: ' + e.getMessage());
         }
     }
     

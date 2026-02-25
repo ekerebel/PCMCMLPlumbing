@@ -9,6 +9,7 @@ import getAttributeDefinitions from '@salesforce/apex/ConstraintStudioController
 import getProductComponentSuggestions from '@salesforce/apex/ConstraintStudioController.getProductComponentSuggestions';
 import getContextualProducts from '@salesforce/apex/ConstraintStudioController.getContextualProducts';
 import getPicklistValues from '@salesforce/apex/ConstraintStudioController.getPicklistValues';
+import findProductRelatedComponent from '@salesforce/apex/ConstraintStudioController.findProductRelatedComponent';
 
 export default class ConstraintStudio extends LightningElement {
     @api recordId;
@@ -83,19 +84,59 @@ export default class ConstraintStudio extends LightningElement {
     }
     
     // Translate display names to IDs before saving
-    translateToIds(cmlText) {
+    async translateToIds(cmlText) {
         if (!cmlText) return cmlText;
         
         let translated = cmlText;
         
-        // Find all suggestions and replace display names with IDs
+        // First, handle GroupName[ProductName] patterns
+        // Pattern: word[word] where both are product/group names
+        const bracketPattern = /([\w]+)\[([\w]+)\]/g;
+        const matches = [...cmlText.matchAll(bracketPattern)];
+        
+        for (const match of matches) {
+            const groupName = match[1];
+            const productName = match[2];
+            const fullPattern = match[0];
+            
+            // Find the group suggestion
+            const groupSuggestion = this.allSuggestions.find(s => 
+                s.actualName === groupName && s.type === 'ProductComponentGroup'
+            );
+            
+            // Find the product suggestion
+            const productSuggestion = this.allSuggestions.find(s => 
+                s.actualName === productName && s.value && s.value.startsWith('Product2_')
+            );
+            
+            if (groupSuggestion && productSuggestion) {
+                // Extract IDs
+                const groupId = groupSuggestion.recordId;
+                const productId = productSuggestion.value.replace('Product2_', '');
+                
+                try {
+                    // Call Apex to find ProductRelatedComponent
+                    const result = await findProductRelatedComponent({
+                        productComponentGroupId: groupId,
+                        product2Id: productId
+                    });
+                    
+                    if (result && result.prcId) {
+                        // Replace with REL_ProductRelatedComponent_<ID>[Product2_<ID>]
+                        const replacement = `REL_ProductRelatedComponent_${result.prcId}[Product2_${productId}]`;
+                        translated = translated.replace(fullPattern, replacement);
+                    }
+                } catch (error) {
+                    console.error('Error finding ProductRelatedComponent:', error);
+                }
+            }
+        }
+        
+        // Then handle remaining individual translations (attributes, etc.)
         this.allSuggestions.forEach(suggestion => {
             if (suggestion.actualName && suggestion.value) {
-                // Handle all product types: ProductComponentGroup, Product, and Product2_ formats
-                if (suggestion.type === 'ProductComponentGroup' || 
-                    suggestion.type === 'Product' || 
-                    suggestion.value.startsWith('Product2_')) {
-                    // Replace actualName with value (ID format)
+                // Skip ProductComponentGroup and Product2_ as they're handled above
+                if (suggestion.type === 'Attribute') {
                     const regex = new RegExp('\\b' + this.escapeRegex(suggestion.actualName) + '\\b', 'g');
                     translated = translated.replace(regex, suggestion.value);
                 }
@@ -432,8 +473,8 @@ export default class ConstraintStudio extends LightningElement {
         
         this.isSaving = true;
         try {
-            // Translate display names back to IDs before saving
-            let cmlToSave = this.translateToIds(this.editCML);
+            // Translate display names back to IDs before saving (await because it's async now)
+            let cmlToSave = await this.translateToIds(this.editCML);
             
             // Add active annotation at the beginning
             const activeAnnotation = `@(active=${this.isActive})\n`;
