@@ -627,6 +627,31 @@ public with sharing class CMLGenerator {
             return '// No CML types generated\n';
         }
         
+        // Query for virtual Product2 types (needed for relation annotation logic)
+        Set<Id> product2Ids = new Set<Id>();
+        for (CMLTypeWrapper type : typeMap.values()) {
+            if (type.typeName.startsWith('Product2_')) {
+                product2Ids.add(type.referenceObjectId);
+            }
+        }
+        
+        Set<Id> virtualProduct2Ids = new Set<Id>();
+        if (!product2Ids.isEmpty()) {
+            List<CMLSnippet__c> product2Annotations = [
+                SELECT Id, ParentProduct2__c, CML__c
+                FROM CMLSnippet__c
+                WHERE Object__c = 'Product2'
+                AND Type__c = 'annotation'
+                AND ParentProduct2__c IN :product2Ids
+            ];
+            
+            for (CMLSnippet__c snippet : product2Annotations) {
+                if (snippet.CML__c != null && snippet.CML__c.contains('virtual') && snippet.CML__c.contains('true')) {
+                    virtualProduct2Ids.add(snippet.ParentProduct2__c);
+                }
+            }
+        }
+        
         // Add property at the top
         String cml = 'property allowMissingRelations = "true";\n\n';
         
@@ -723,11 +748,14 @@ public with sharing class CMLGenerator {
             }
             
             // Add relations with proper Product2 references and cardinality
+            // Check if this type is a virtual Product2
+            Boolean isVirtualProduct2 = type.typeName.startsWith('Product2_') && virtualProduct2Ids.contains(type.referenceObjectId);
+            
             for (CMLRelation rel : type.relations) {
                 if (rel.objectType == 'ProductRelatedComponent') {
-                    cml += generateProductRelatedComponentRelation(rel, type, typeMap);
+                    cml += generateProductRelatedComponentRelation(rel, type, typeMap, isVirtualProduct2);
                 } else if (rel.objectType == 'ProductComponentGroup') {
-                    cml += generateProductComponentGroupRelation(rel, type, typeMap);
+                    cml += generateProductComponentGroupRelation(rel, type, typeMap, isVirtualProduct2);
                 }
             }
             
@@ -754,9 +782,10 @@ public with sharing class CMLGenerator {
      * @param rel The relation object
      * @param type The parent type
      * @param typeMap The global type map
+     * @param isVirtualProduct2 Whether the parent type is a virtual Product2
      * @return String The generated CML for this relation
      */
-    private static String generateProductRelatedComponentRelation(CMLRelation rel, CMLTypeWrapper type, Map<Id, CMLTypeWrapper> typeMap) {
+    private static String generateProductRelatedComponentRelation(CMLRelation rel, CMLTypeWrapper type, Map<Id, CMLTypeWrapper> typeMap, Boolean isVirtualProduct2) {
         String relationCml = '';
         
         // Query ProductRelatedComponent to get ChildProductId and cardinality
@@ -781,6 +810,11 @@ public with sharing class CMLGenerator {
         
         // Ensure Product2 type exists
         String product2TypeName = ensureProduct2TypeExists(prc.ChildProductId, typeMap);
+        
+        // Add sourceContextNode annotation for virtual Product2 types
+        if (isVirtualProduct2) {
+            relationCml += '    @(sourceContextNode = "SalesTransaction.SalesTransactionItem")\n';
+        }
         
         // Add relation annotation if present
         if (String.isNotBlank(rel.annotation)) {
@@ -811,9 +845,10 @@ public with sharing class CMLGenerator {
      * @param rel The relation object
      * @param type The parent type
      * @param typeMap The global type map
+     * @param isVirtualProduct2 Whether the parent type is a virtual Product2
      * @return String The generated CML for this relation
      */
-    private static String generateProductComponentGroupRelation(CMLRelation rel, CMLTypeWrapper type, Map<Id, CMLTypeWrapper> typeMap) {
+    private static String generateProductComponentGroupRelation(CMLRelation rel, CMLTypeWrapper type, Map<Id, CMLTypeWrapper> typeMap, Boolean isVirtualProduct2) {
         String relationCml = '';
         
         // Query ProductComponentGroup to get cardinality
@@ -893,6 +928,11 @@ public with sharing class CMLGenerator {
                 }
             }
             
+            // Add sourceContextNode annotation for virtual Product2 types
+            if (isVirtualProduct2) {
+                relationCml += '    @(sourceContextNode = "SalesTransaction.SalesTransactionItem")\n';
+            }
+            
             // Add relation annotation if present
             if (String.isNotBlank(rel.annotation)) {
                 relationCml += '    ' + rel.annotation + '\n';
@@ -922,6 +962,11 @@ public with sharing class CMLGenerator {
                 
                 // Ensure Product2 type exists
                 String product2TypeName = ensureProduct2TypeExists(prc.ChildProductId, typeMap);
+                
+                // Add sourceContextNode annotation for virtual Product2 types
+                if (isVirtualProduct2) {
+                    relationCml += '    @(sourceContextNode = "SalesTransaction.SalesTransactionItem")\n';
+                }
                 
                 // Generate relation name
                 String relationName = 'REL_ProductRelatedComponent_' + prc.Id;
@@ -1211,7 +1256,40 @@ public with sharing class CMLGenerator {
     private static void createExpressionSetConstraintObjs(Id expressionSetId, Map<Id, CMLTypeWrapper> typeMap) {
         List<ExpressionSetConstraintObj> objsToCreate = new List<ExpressionSetConstraintObj>();
         
+        // Query for Product2 annotation snippets to check for virtual=true
+        Set<Id> product2Ids = new Set<Id>();
         for (CMLTypeWrapper type : typeMap.values()) {
+            if (type.typeName.startsWith('Product2_')) {
+                product2Ids.add(type.referenceObjectId);
+            }
+        }
+        
+        Set<Id> virtualProduct2Ids = new Set<Id>();
+        if (!product2Ids.isEmpty()) {
+            List<CMLSnippet__c> product2Annotations = [
+                SELECT Id, ParentProduct2__c, CML__c
+                FROM CMLSnippet__c
+                WHERE Object__c = 'Product2'
+                AND Type__c = 'annotation'
+                AND ParentProduct2__c IN :product2Ids
+            ];
+            
+            for (CMLSnippet__c snippet : product2Annotations) {
+                // Check if annotation contains virtual=true
+                if (snippet.CML__c != null && snippet.CML__c.contains('virtual') && snippet.CML__c.contains('true')) {
+                    virtualProduct2Ids.add(snippet.ParentProduct2__c);
+                    System.debug('Product2 ' + snippet.ParentProduct2__c + ' is marked as virtual, skipping ExpressionSetConstraintObj creation');
+                }
+            }
+        }
+        
+        for (CMLTypeWrapper type : typeMap.values()) {
+            // Skip creating Type record for virtual Product2 types
+            if (type.typeName.startsWith('Product2_') && virtualProduct2Ids.contains(type.referenceObjectId)) {
+                System.debug('Skipping ExpressionSetConstraintObj for virtual Product2 type: ' + type.typeName);
+                continue;
+            }
+            
             // Create Type record
             ExpressionSetConstraintObj typeObj = new ExpressionSetConstraintObj();
             typeObj.ExpressionSetId = expressionSetId;
