@@ -27,6 +27,7 @@ export default class ConstraintStudio extends LightningElement {
     @track selectedSnippet = null;
     @track editLabel = '';
     @track editCML = '';
+    @track isActive = true;
     @track showCMLEditor = false;
     @track isSaving = false;
     @track attributeDefinitions = [];
@@ -89,11 +90,15 @@ export default class ConstraintStudio extends LightningElement {
         
         // Find all suggestions and replace display names with IDs
         this.allSuggestions.forEach(suggestion => {
-            if (suggestion.actualName && suggestion.value && 
-                (suggestion.type === 'ProductComponentGroup' || suggestion.type === 'Product')) {
-                // Replace actualName with value (ID format)
-                const regex = new RegExp('\\b' + this.escapeRegex(suggestion.actualName) + '\\b', 'g');
-                translated = translated.replace(regex, suggestion.value);
+            if (suggestion.actualName && suggestion.value) {
+                // Handle all product types: ProductComponentGroup, Product, and Product2_ formats
+                if (suggestion.type === 'ProductComponentGroup' || 
+                    suggestion.type === 'Product' || 
+                    suggestion.value.startsWith('Product2_')) {
+                    // Replace actualName with value (ID format)
+                    const regex = new RegExp('\\b' + this.escapeRegex(suggestion.actualName) + '\\b', 'g');
+                    translated = translated.replace(regex, suggestion.value);
+                }
             }
         });
         
@@ -106,13 +111,17 @@ export default class ConstraintStudio extends LightningElement {
         
         let translated = cmlText;
         
-        // Find all REL_ patterns and replace with display names
+        // Find all ID patterns and replace with display names
         this.allSuggestions.forEach(suggestion => {
-            if (suggestion.value && suggestion.actualName && 
-                (suggestion.type === 'ProductComponentGroup' || suggestion.type === 'Product')) {
-                // Replace value (ID format) with actualName
-                const regex = new RegExp('\\b' + this.escapeRegex(suggestion.value) + '\\b', 'g');
-                translated = translated.replace(regex, suggestion.actualName);
+            if (suggestion.value && suggestion.actualName) {
+                // Handle all product types: ProductComponentGroup, Product, and Product2_ formats
+                if (suggestion.type === 'ProductComponentGroup' || 
+                    suggestion.type === 'Product' || 
+                    suggestion.value.startsWith('Product2_')) {
+                    // Replace value (ID format) with actualName
+                    const regex = new RegExp('\\b' + this.escapeRegex(suggestion.value) + '\\b', 'g');
+                    translated = translated.replace(regex, suggestion.actualName);
+                }
             }
         });
         
@@ -297,13 +306,42 @@ export default class ConstraintStudio extends LightningElement {
         console.log('snippet.CML__c:', snippet.CML__c);
         this.selectedSnippet = snippet;
         this.editLabel = snippet.Label__c || '';
+        
+        // Parse the CML to extract active annotation and actual code
+        const { isActive, cmlCode } = this.parseActiveAnnotation(snippet.CML__c || '');
+        this.isActive = isActive;
+        
         // Translate IDs to display names for editing
-        this.editCML = this.translateToDisplayNames(snippet.CML__c || '');
+        this.editCML = this.translateToDisplayNames(cmlCode);
         console.log('editCML set to:', this.editCML);
+        console.log('isActive set to:', this.isActive);
+        
         // Show CML editor by default for new snippets
         this.showCMLEditor = isNewSnippet;
         // Force re-render to update selection highlighting
         this.groupSnippets();
+    }
+    
+    parseActiveAnnotation(cmlText) {
+        if (!cmlText) {
+            return { isActive: true, cmlCode: '' }; // Default to active
+        }
+        
+        // Check if CML starts with @(active=true) or @(active=false)
+        const activeMatch = cmlText.match(/^@\(active=(true|false)\)\s*/);
+        
+        if (activeMatch) {
+            const isActive = activeMatch[1] === 'true';
+            const cmlCode = cmlText.substring(activeMatch[0].length); // Remove annotation
+            return { isActive, cmlCode };
+        }
+        
+        // No annotation found - default to active
+        return { isActive: true, cmlCode: cmlText };
+    }
+    
+    handleActiveToggle(event) {
+        this.isActive = event.target.checked;
     }
     
     handleLabelChange(event) {
@@ -395,7 +433,11 @@ export default class ConstraintStudio extends LightningElement {
         this.isSaving = true;
         try {
             // Translate display names back to IDs before saving
-            const cmlToSave = this.translateToIds(this.editCML);
+            let cmlToSave = this.translateToIds(this.editCML);
+            
+            // Add active annotation at the beginning
+            const activeAnnotation = `@(active=${this.isActive})\n`;
+            cmlToSave = activeAnnotation + cmlToSave;
             
             await saveCMLSnippet({
                 snippetId: this.selectedSnippet.Id,

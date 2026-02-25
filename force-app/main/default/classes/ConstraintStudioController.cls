@@ -25,10 +25,60 @@ public with sharing class ConstraintStudioController {
             
             query += ' ORDER BY Label__c ASC NULLS LAST, Name ASC';
             
-            return Database.query(query);
+            List<CMLSnippet__c> snippets = Database.query(query);
+            
+            // Transform Product2 IDs back to names for display
+            for (CMLSnippet__c snippet : snippets) {
+                if (String.isNotBlank(snippet.CML__c)) {
+                    snippet.CML__c = transformProduct2IdsToNames(snippet.CML__c);
+                }
+            }
+            
+            return snippets;
         } catch (Exception e) {
             throw new AuraHandledException('Error fetching CML Snippets: ' + e.getMessage());
         }
+    }
+    
+    /**
+     * @description Transforms Product2 IDs in CML back to Product2 Names for display
+     * @param cml The CML string containing Product2_<ID> references
+     * @return String The CML with Product2 names instead of IDs
+     */
+    private static String transformProduct2IdsToNames(String cml) {
+        // Pattern to match Product2_<ID>
+        Pattern product2Pattern = Pattern.compile('Product2_([a-zA-Z0-9]{15,18})');
+        Matcher matcher = product2Pattern.matcher(cml);
+        
+        // Collect all Product2 IDs
+        Set<Id> product2Ids = new Set<Id>();
+        while (matcher.find()) {
+            try {
+                product2Ids.add(matcher.group(1));
+            } catch (Exception e) {
+                // Invalid ID, skip
+            }
+        }
+        
+        if (product2Ids.isEmpty()) {
+            return cml;
+        }
+        
+        // Query Product2 names
+        Map<Id, String> idToNameMap = new Map<Id, String>();
+        for (Product2 p : [SELECT Id, Name FROM Product2 WHERE Id IN :product2Ids]) {
+            String cleanName = p.Name.replaceAll('[^a-zA-Z0-9]', '_');
+            idToNameMap.put(p.Id, cleanName);
+        }
+        
+        // Replace IDs with names
+        String result = cml;
+        for (Id productId : idToNameMap.keySet()) {
+            String productName = idToNameMap.get(productId);
+            result = result.replaceAll('Product2_' + productId, productName);
+        }
+        
+        return result;
     }
     
     @AuraEnabled

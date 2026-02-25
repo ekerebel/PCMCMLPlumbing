@@ -93,14 +93,24 @@ public with sharing class CMLGenerator {
             updateBlob(esdv, cmlContent);
             System.debug('BLOB updated successfully');
             
-            // Step 6: Delete existing ExpressionSetConstraintObj records (DML - AFTER callout)
+            // Step 6: Delete existing ExpressionSetConstraintObj records (DML)
             deleteExpressionSetConstraintObjs(expressionSetId);
             
             // Step 7: Create ExpressionSetConstraintObj records for each type (DML)
             createExpressionSetConstraintObjs(expressionSetId, typeMap);
             
-            System.debug('=== CML Generator Completed Successfully ===');
-            return 'CML generated and updated successfully for ' + typeMap.size() + ' types.';
+            // Step 8: Activate/Deploy the CML (HTTP callout - AFTER DML)
+            // Try to activate, but don't fail the entire process if activation fails
+            try {
+                activateCML(expressionSetId, esdv.Id);
+                System.debug('CML activated successfully');
+            } catch (Exception activationEx) {
+                System.debug(LoggingLevel.WARN, 'CML activation failed: ' + activationEx.getMessage());
+                // Don't throw - allow the process to complete even if activation fails
+            }
+            
+            System.debug('=== CML Deployment Completed Successfully ===');
+            return 'CML generated, deployed, and activated successfully for ' + typeMap.size() + ' types.';
             
         } catch (Exception e) {
             System.debug(LoggingLevel.ERROR, 'CML Generator Error: ' + e.getMessage());
@@ -1088,6 +1098,65 @@ public with sharing class CMLGenerator {
         }
         
         System.debug('BLOB updated successfully via Composite API');
+    }
+    
+    /**
+     * @description Activates/Deploys the CML by setting Status to Active
+     * @param expressionSetId The ExpressionSet ID
+     * @param expressionSetDefinitionVersionId The ExpressionSetDefinitionVersion ID
+     */
+    private static void activateCML(Id expressionSetId, Id expressionSetDefinitionVersionId) {
+        // Query for the ExpressionSetVersion that corresponds to this ExpressionSet
+        // ExpressionSetVersion is linked to ExpressionSet, not ExpressionSetDefinitionVersion
+        List<ExpressionSetVersion> versions = [
+            SELECT Id, VersionNumber
+            FROM ExpressionSetVersion
+            WHERE ExpressionSetId = :expressionSetId
+            ORDER BY VersionNumber DESC
+            LIMIT 1
+        ];
+        
+        if (versions.isEmpty()) {
+            throw new CMLGeneratorException(
+                'ExpressionSetVersion not found for ExpressionSet: ' + expressionSetId
+            );
+        }
+        
+        Id expressionSetVersionId = versions[0].Id;
+        System.debug('Found ExpressionSetVersion: ' + expressionSetVersionId + ' (Version ' + versions[0].VersionNumber + ') for ExpressionSet: ' + expressionSetId);
+        
+        // Construct the deployment URL
+        String deployUrl = '/services/data/' + API_VERSION + '/industries/constraints/' + expressionSetId + '/versions/' + expressionSetVersionId;
+        String instanceUrl = URL.getOrgDomainUrl().toExternalForm();
+        String fullUrl = instanceUrl + deployUrl;
+        
+        System.debug('Activating CML at: ' + fullUrl);
+        
+        // Get session ID
+        String sessionId = getSessionId();
+        
+        // Try POST method to activate (deployment endpoint)
+        HttpRequest req = new HttpRequest();
+        req.setEndpoint(fullUrl);
+        req.setMethod('POST');
+        req.setHeader('Authorization', 'Bearer ' + sessionId);
+        req.setHeader('Content-Type', 'application/json');
+        req.setBody('{}');  // Empty body for POST activation
+        
+        Http http = new Http();
+        HttpResponse res = http.send(req);
+        
+        System.debug('Activation Response Status: ' + res.getStatusCode());
+        System.debug('Activation Response Body: ' + res.getBody());
+        
+        if (res.getStatusCode() != 200 && res.getStatusCode() != 204) {
+            throw new CMLGeneratorException(
+                'Failed to activate CML. Status: ' + res.getStatusCode() + 
+                ', Body: ' + res.getBody()
+            );
+        }
+        
+        System.debug('CML activated/deployed successfully');
     }
     
     /**

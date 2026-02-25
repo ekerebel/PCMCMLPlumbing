@@ -205,6 +205,19 @@
     flex: 1;
 }
 
+.active-toggle-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.active-toggle-container .toggle-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: #3e3e3c;
+}
+
 .save-button {
     flex-shrink: 0;
 }

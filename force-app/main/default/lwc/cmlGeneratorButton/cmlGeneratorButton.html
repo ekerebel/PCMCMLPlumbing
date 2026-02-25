@@ -6,7 +6,7 @@
         </div>
         <div class="tile-separator"></div>
         <div class="tile-content">
-            <h3 class="tile-title">CML Generator</h3>
+            <h3 class="tile-title">CML Deployment</h3>
             <p class="tile-description">
                 Available snippets: {snippetCount}
             </p>
@@ -24,8 +24,8 @@
             <div class="button-container">
                 <lightning-button
                     variant="brand"
-                    label="Generate CML"
-                    title="Generate CML from snippets"
+                    label="Deploy CML"
+                    title="Deploy CML from snippets"
                     onclick={handleGenerateCML}
                     disabled={isGenerating}
                     icon-name="utility:refresh"
@@ -34,8 +34,8 @@
             
             <template if:true={isGenerating}>
                 <div class="slds-m-top_small slds-text-align_center">
-                    <lightning-spinner alternative-text="Generating CML..." size="small"></lightning-spinner>
-                    <p class="slds-text-body_small slds-m-top_small">Generating CML...</p>
+                    <lightning-spinner alternative-text="Deploying CML..." size="small"></lightning-spinner>
+                    <p class="slds-text-body_small slds-m-top_small">Deploying CML...</p>
                 </div>
             </template>
         </div>

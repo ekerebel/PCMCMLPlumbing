@@ -105,7 +105,7 @@
             <div class="right-pane">
                 <template if:true={hasSelectedSnippet}>
                     <div class="editor-container">
-                        <!-- Header with Label and Save Button -->
+                        <!-- Header with Label, Active Toggle, and Save Button -->
                         <div class="editor-header">
                             <lightning-input
                                 type="text"
@@ -114,6 +114,15 @@
                                 placeholder="Enter label..."
                                 class="label-input">
                             </lightning-input>
+                            <div class="active-toggle-container">
+                                <span class="toggle-label">Active</span>
+                                <lightning-input
+                                    type="toggle"
+                                    checked={isActive}
+                                    onchange={handleActiveToggle}
+                                    class="active-toggle">
+                                </lightning-input>
+                            </div>
                             <lightning-button
                                 label="Save"
                                 variant="brand"

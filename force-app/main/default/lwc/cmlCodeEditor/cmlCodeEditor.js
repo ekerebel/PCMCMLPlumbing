@@ -327,7 +327,8 @@ export default class CmlCodeEditor extends LightningElement {
         this.value = newText;
         
         // Store the mapping for later translation (if needed)
-        if (selectedOption.type === 'ProductComponentGroup' || selectedOption.type === 'Product') {
+        if (selectedOption.type === 'ProductComponentGroup' || selectedOption.type === 'Product' || 
+            (selectedOption.value && selectedOption.value.startsWith('Product2_'))) {
             this.dispatchEvent(new CustomEvent('idmapping', {
                 detail: {
                     displayName: insertValue,

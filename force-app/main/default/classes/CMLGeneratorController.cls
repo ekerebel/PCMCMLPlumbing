@@ -15,7 +15,7 @@ public with sharing class CMLGeneratorController {
             // Enqueue the job to run in system context
             Id jobId = CMLGeneratorQueueable.enqueue();
             
-            return 'CML generation job started successfully. Job ID: ' + jobId + 
+            return 'CML deployment job started successfully. Job ID: ' + jobId + 
                    '. Check the debug logs for results.';
         } catch (Exception e) {
             // Log the error
