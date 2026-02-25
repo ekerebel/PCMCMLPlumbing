@@ -48,9 +48,59 @@ public with sharing class ConstraintStudioController {
     private static String transformProduct2IdsToNames(String cml) {
         String result = cml;
         
-        // First, handle REL_ProductRelatedComponent_<ID>[Product2_<ID>] patterns
+        // First, handle REL_ProductComponentGroup_<ID>[Product2_<ID>] patterns
+        Pattern pcgPattern = Pattern.compile('REL_ProductComponentGroup_([a-zA-Z0-9]{15,18})\\[Product2_([a-zA-Z0-9]{15,18})\\]');
+        Matcher pcgMatcher = pcgPattern.matcher(cml);
+        
+        // Collect all ProductComponentGroup IDs and Product2 IDs
+        Set<Id> pcgIds = new Set<Id>();
+        Set<Id> product2IdsInPcg = new Set<Id>();
+        while (pcgMatcher.find()) {
+            try {
+                pcgIds.add(pcgMatcher.group(1));
+                product2IdsInPcg.add(pcgMatcher.group(2));
+            } catch (Exception e) {
+                // Invalid ID, skip
+            }
+        }
+        
+        if (!pcgIds.isEmpty()) {
+            // Query ProductComponentGroup names
+            Map<Id, String> pcgNameMap = new Map<Id, String>();
+            for (ProductComponentGroup pcg : [
+                SELECT Id, Name
+                FROM ProductComponentGroup
+                WHERE Id IN :pcgIds
+            ]) {
+                String cleanName = pcg.Name.replaceAll('[^a-zA-Z0-9]', '_');
+                pcgNameMap.put(pcg.Id, cleanName);
+            }
+            
+            // Query Product2 names
+            Map<Id, String> product2NameMap = new Map<Id, String>();
+            for (Product2 p : [SELECT Id, Name FROM Product2 WHERE Id IN :product2IdsInPcg]) {
+                String cleanName = p.Name.replaceAll('[^a-zA-Z0-9]', '_');
+                product2NameMap.put(p.Id, cleanName);
+            }
+            
+            // Replace REL_ProductComponentGroup_<ID>[Product2_<ID>] with GroupName[ProductName]
+            pcgMatcher.reset();
+            while (pcgMatcher.find()) {
+                String pcgId = pcgMatcher.group(1);
+                String product2Id = pcgMatcher.group(2);
+                if (pcgNameMap.containsKey(pcgId) && product2NameMap.containsKey(product2Id)) {
+                    String groupName = pcgNameMap.get(pcgId);
+                    String productName = product2NameMap.get(product2Id);
+                    String replacement = groupName + '[' + productName + ']';
+                    String pattern = 'REL_ProductComponentGroup_' + pcgId + '\\[Product2_' + product2Id + '\\]';
+                    result = result.replaceAll(pattern, replacement);
+                }
+            }
+        }
+        
+        // Second, handle REL_ProductRelatedComponent_<ID>[Product2_<ID>] patterns
         Pattern prcPattern = Pattern.compile('REL_ProductRelatedComponent_([a-zA-Z0-9]{15,18})\\[Product2_([a-zA-Z0-9]{15,18})\\]');
-        Matcher prcMatcher = prcPattern.matcher(cml);
+        Matcher prcMatcher = prcPattern.matcher(result);
         
         // Collect all ProductRelatedComponent IDs
         Set<Id> prcIds = new Set<Id>();
@@ -353,9 +403,17 @@ public with sharing class ConstraintStudioController {
     @AuraEnabled(cacheable=true)
     public static Map<String, String> findProductRelatedComponent(String productComponentGroupId, String product2Id) {
         try {
+            // Get the ProductComponentGroup
+            ProductComponentGroup pcg = [
+                SELECT Id, Name, MaxBundleComponents
+                FROM ProductComponentGroup
+                WHERE Id = :productComponentGroupId
+                LIMIT 1
+            ];
+            
             // Find the ProductRelatedComponent that links this group to this product
             List<ProductRelatedComponent> prcList = [
-                SELECT Id, ProductComponentGroup.Name, ChildProduct.Name
+                SELECT Id, ProductComponentGroup.Name, ChildProduct.Name, ChildProduct.BasedOnId
                 FROM ProductRelatedComponent
                 WHERE ProductComponentGroupId = :productComponentGroupId
                 AND ChildProductId = :product2Id
@@ -370,10 +428,43 @@ public with sharing class ConstraintStudioController {
             String groupCleanName = prc.ProductComponentGroup.Name.replaceAll('[^a-zA-Z0-9]', '_');
             String productCleanName = prc.ChildProduct.Name.replaceAll('[^a-zA-Z0-9]', '_');
             
+            // Check if this group meets the special criteria
+            Boolean useProductComponentGroup = false;
+            
+            if (pcg.MaxBundleComponents == 1) {
+                // Get all products in this group to check if they have same BasedOnId
+                List<ProductRelatedComponent> allPrcs = [
+                    SELECT ChildProduct.BasedOnId
+                    FROM ProductRelatedComponent
+                    WHERE ProductComponentGroupId = :productComponentGroupId
+                ];
+                
+                Id firstBasedOnId = null;
+                Boolean allSameBasedOn = true;
+                Boolean allHaveBasedOn = true;
+                
+                for (ProductRelatedComponent p : allPrcs) {
+                    if (p.ChildProduct.BasedOnId == null) {
+                        allHaveBasedOn = false;
+                        break;
+                    }
+                    if (firstBasedOnId == null) {
+                        firstBasedOnId = p.ChildProduct.BasedOnId;
+                    } else if (firstBasedOnId != p.ChildProduct.BasedOnId) {
+                        allSameBasedOn = false;
+                        break;
+                    }
+                }
+                
+                useProductComponentGroup = allSameBasedOn && allHaveBasedOn;
+            }
+            
             return new Map<String, String>{
                 'prcId' => prc.Id,
+                'groupId' => pcg.Id,
                 'groupName' => groupCleanName,
-                'productName' => productCleanName
+                'productName' => productCleanName,
+                'useProductComponentGroup' => String.valueOf(useProductComponentGroup)
             };
             
         } catch (Exception e) {

@@ -121,9 +121,18 @@ export default class ConstraintStudio extends LightningElement {
                         product2Id: productId
                     });
                     
-                    if (result && result.prcId) {
-                        // Replace with REL_ProductRelatedComponent_<ID>[Product2_<ID>]
-                        const replacement = `REL_ProductRelatedComponent_${result.prcId}[Product2_${productId}]`;
+                    if (result) {
+                        let replacement;
+                        
+                        // Check if we should use ProductComponentGroup or ProductRelatedComponent
+                        if (result.useProductComponentGroup === 'true') {
+                            // MaxBundleComponents==1 AND all products have same BasedOnId
+                            replacement = `REL_ProductComponentGroup_${result.groupId}[Product2_${productId}]`;
+                        } else {
+                            // All other cases
+                            replacement = `REL_ProductRelatedComponent_${result.prcId}[Product2_${productId}]`;
+                        }
+                        
                         translated = translated.replace(fullPattern, replacement);
                     }
                 } catch (error) {
