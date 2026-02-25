@@ -238,6 +238,59 @@
                     </c-cml-code-editor>
                             </div>
                         </template>
+                        
+                        <!-- Annotations Section -->
+                        <div class="annotations-section">
+                            <div class="annotations-header">
+                                <span class="annotations-title">Annotations</span>
+                                <lightning-button-icon
+                                    icon-name="utility:add"
+                                    variant="bare"
+                                    alternative-text="Add Annotation"
+                                    title="Add Annotation"
+                                    onclick={handleAddAnnotation}
+                                    class="add-annotation-button">
+                                </lightning-button-icon>
+                            </div>
+                            <div class="annotations-list">
+                                <template if:true={hasAnnotations}>
+                                    <template for:each={annotations} for:item="annotation">
+                                        <div key={annotation.id} class="annotation-item">
+                                            <lightning-combobox
+                                                name="annotationType"
+                                                value={annotation.type}
+                                                placeholder="Select Type"
+                                                options={annotationTypeOptions}
+                                                data-id={annotation.id}
+                                                onchange={handleAnnotationTypeChange}
+                                                class="annotation-type">
+                                            </lightning-combobox>
+                                            <lightning-input
+                                                type="date"
+                                                value={annotation.value}
+                                                data-id={annotation.id}
+                                                onchange={handleAnnotationValueChange}
+                                                class="annotation-value">
+                                            </lightning-input>
+                                            <lightning-button-icon
+                                                icon-name="utility:delete"
+                                                variant="bare"
+                                                alternative-text="Delete"
+                                                title="Delete"
+                                                data-id={annotation.id}
+                                                onclick={handleDeleteAnnotation}
+                                                class="delete-annotation-button">
+                                            </lightning-button-icon>
+                                        </div>
+                                    </template>
+                                </template>
+                                <template if:false={hasAnnotations}>
+                                    <div class="no-annotations">
+                                        No annotations
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
                     </div>
                 </template>
                 

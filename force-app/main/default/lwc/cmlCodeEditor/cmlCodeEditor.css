@@ -9,7 +9,8 @@
     top: 0;
     left: 0;
     width: 100%;
-    min-height: 400px;
+    min-height: 100px;
+    max-height: 100px;
     padding: 12px;
     font-family: 'Courier New', Courier, monospace;
     font-size: 0.875rem;
@@ -26,17 +27,19 @@
 .code-textarea {
     position: relative;
     width: 100%;
-    min-height: 400px;
+    min-height: 100px;
+    max-height: 100px;
     padding: 12px;
     font-family: 'Courier New', Courier, monospace;
     font-size: 0.875rem;
     line-height: 1.6;
     border: 1px solid #dddbda;
     border-radius: 4px;
-    resize: vertical;
+    resize: none;
     background-color: transparent;
     color: #080707;
     z-index: 2;
+    overflow-y: auto;
 }
 
 .code-textarea:focus {

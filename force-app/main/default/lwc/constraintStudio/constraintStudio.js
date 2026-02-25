@@ -34,9 +34,17 @@ export default class ConstraintStudio extends LightningElement {
     @track attributeDefinitions = [];
     @track productComponentSuggestions = [];
     @track idMappings = {}; // Store display name -> ID mappings
+    @track annotations = []; // Store annotations
     
     wiredSnippetsResult;
     allSuggestions = []; // Store all suggestions for reverse lookup
+    annotationCounter = 0; // Counter for unique annotation IDs
+    
+    // Annotation type options
+    annotationTypeOptions = [
+        { label: 'Start Date', value: 'startDate' },
+        { label: 'End Date', value: 'endDate' }
+    ];
     
     @wire(getAttributeDefinitions, {
         recordId: '$recordId',
@@ -281,6 +289,10 @@ export default class ConstraintStudio extends LightningElement {
         return highlighted;
     }
     
+    get hasAnnotations() {
+        return this.annotations && this.annotations.length > 0;
+    }
+    
     handleSearchChange(event) {
         this.searchTerm = event.target.value;
         // Reload snippets when search changes
@@ -374,20 +386,77 @@ export default class ConstraintStudio extends LightningElement {
     
     parseActiveAnnotation(cmlText) {
         if (!cmlText) {
+            this.annotations = [];
             return { isActive: true, cmlCode: '' }; // Default to active
         }
         
-        // Check if CML starts with @(active=true) or @(active=false)
-        const activeMatch = cmlText.match(/^@\(active=(true|false)\)\s*/);
+        // Check if CML starts with @(...) annotation
+        const annotationMatch = cmlText.match(/^@\(([^)]+)\)\s*/);
         
-        if (activeMatch) {
-            const isActive = activeMatch[1] === 'true';
-            const cmlCode = cmlText.substring(activeMatch[0].length); // Remove annotation
+        if (annotationMatch) {
+            const annotationContent = annotationMatch[1];
+            const cmlCode = cmlText.substring(annotationMatch[0].length); // Remove annotation
+            
+            // Parse individual annotations
+            let isActive = true;
+            const parsedAnnotations = [];
+            
+            // Split by comma and parse each annotation
+            const parts = annotationContent.split(',').map(p => p.trim());
+            
+            parts.forEach(part => {
+                if (part.startsWith('active=')) {
+                    isActive = part.substring(7) === 'true';
+                } else if (part.startsWith('startDate=')) {
+                    let dateValue = part.substring(10);
+                    // Remove quotes if present
+                    dateValue = dateValue.replace(/^["']|["']$/g, '');
+                    parsedAnnotations.push({
+                        id: `annotation-${this.annotationCounter++}`,
+                        type: 'startDate',
+                        value: this.convertToISODate(dateValue)
+                    });
+                } else if (part.startsWith('endDate=')) {
+                    let dateValue = part.substring(8);
+                    // Remove quotes if present
+                    dateValue = dateValue.replace(/^["']|["']$/g, '');
+                    parsedAnnotations.push({
+                        id: `annotation-${this.annotationCounter++}`,
+                        type: 'endDate',
+                        value: this.convertToISODate(dateValue)
+                    });
+                }
+            });
+            
+            this.annotations = parsedAnnotations;
             return { isActive, cmlCode };
         }
         
         // No annotation found - default to active
+        this.annotations = [];
         return { isActive: true, cmlCode: cmlText };
+    }
+    
+    // Convert MM/DD/YYYY to YYYY-MM-DD for lightning-input type="date"
+    convertToISODate(dateStr) {
+        if (!dateStr) return '';
+        const parts = dateStr.split('/');
+        if (parts.length === 3) {
+            const [month, day, year] = parts;
+            return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        }
+        return dateStr;
+    }
+    
+    // Convert YYYY-MM-DD to MM/DD/YYYY for storage
+    convertToUSDate(isoDate) {
+        if (!isoDate) return '';
+        const parts = isoDate.split('-');
+        if (parts.length === 3) {
+            const [year, month, day] = parts;
+            return `${month}/${day}/${year}`;
+        }
+        return isoDate;
     }
     
     handleActiveToggle(event) {
@@ -485,9 +554,20 @@ export default class ConstraintStudio extends LightningElement {
             // Translate display names back to IDs before saving (await because it's async now)
             let cmlToSave = await this.translateToIds(this.editCML);
             
-            // Add active annotation at the beginning
-            const activeAnnotation = `@(active=${this.isActive})\n`;
-            cmlToSave = activeAnnotation + cmlToSave;
+            // Build annotation string
+            const annotationParts = [`active=${this.isActive}`];
+            
+            // Add date annotations
+            this.annotations.forEach(ann => {
+                if (ann.type && ann.value) {
+                    const usDate = this.convertToUSDate(ann.value);
+                    annotationParts.push(`${ann.type}="${usDate}"`);
+                }
+            });
+            
+            // Combine all annotations
+            const fullAnnotation = `@(${annotationParts.join(', ')})\n`;
+            cmlToSave = fullAnnotation + cmlToSave;
             
             await saveCMLSnippet({
                 snippetId: this.selectedSnippet.Id,
@@ -510,6 +590,39 @@ export default class ConstraintStudio extends LightningElement {
         } finally {
             this.isSaving = false;
         }
+    }
+    
+    // Annotation handlers
+    handleAddAnnotation() {
+        const newAnnotation = {
+            id: `annotation-${this.annotationCounter++}`,
+            type: '',
+            value: ''
+        };
+        this.annotations = [...this.annotations, newAnnotation];
+    }
+    
+    handleAnnotationTypeChange(event) {
+        const annotationId = event.currentTarget.dataset.id;
+        const newType = event.detail.value;
+        
+        this.annotations = this.annotations.map(ann => 
+            ann.id === annotationId ? { ...ann, type: newType } : ann
+        );
+    }
+    
+    handleAnnotationValueChange(event) {
+        const annotationId = event.currentTarget.dataset.id;
+        const newValue = event.detail.value;
+        
+        this.annotations = this.annotations.map(ann => 
+            ann.id === annotationId ? { ...ann, value: newValue } : ann
+        );
+    }
+    
+    handleDeleteAnnotation(event) {
+        const annotationId = event.currentTarget.dataset.id;
+        this.annotations = this.annotations.filter(ann => ann.id !== annotationId);
     }
     
     showToast(title, message, variant) {

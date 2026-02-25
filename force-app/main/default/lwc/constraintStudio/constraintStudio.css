@@ -330,12 +330,13 @@
 
 /* Code Editor */
 .code-editor {
-    flex: 1;
+    flex: 0 1 auto;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     padding: 16px;
     background-color: #ffffff;
+    max-height: 150px;
 }
 
 .code-textarea {
@@ -345,7 +346,8 @@
 }
 
 .code-textarea textarea {
-    min-height: 400px;
+    min-height: 100px;
+    max-height: 125px;
     font-family: 'Courier New', Courier, monospace;
     line-height: 1.6;
 }
@@ -372,4 +374,67 @@
 
 .sections-container::-webkit-scrollbar-thumb:hover {
     background: #706e6b;
+}
+
+/* Annotations Section */
+.annotations-section {
+    padding: 16px;
+    border-top: 1px solid #dddbda;
+    background-color: #fafaf9;
+}
+
+.annotations-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.annotations-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #080707;
+}
+
+.add-annotation-button {
+    flex-shrink: 0;
+}
+
+.annotations-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.annotation-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background-color: #ffffff;
+    border: 1px solid #dddbda;
+    border-radius: 4px;
+}
+
+.annotation-type {
+    flex: 0 0 150px;
+}
+
+.annotation-value {
+    flex: 1;
+}
+
+.delete-annotation-button {
+    flex-shrink: 0;
+}
+
+.no-annotations {
+    padding: 12px;
+    text-align: center;
+    font-size: 0.875rem;
+    color: #706e6b;
+    font-style: italic;
+    background-color: #ffffff;
+    border: 1px solid #dddbda;
+    border-radius: 4px;
 }
