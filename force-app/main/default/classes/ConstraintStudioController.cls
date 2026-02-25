@@ -217,19 +217,19 @@ public with sharing class ConstraintStudioController {
                 WHERE ParentProductId = :recordId
             ];
             
-            // Get all ProductRelatedComponents for these groups
+            // Get all ProductRelatedComponents for these groups to check if they have children
             Set<Id> pcgIds = new Set<Id>();
             for (ProductComponentGroup pcg : pcgList) {
                 pcgIds.add(pcg.Id);
             }
             
             List<ProductRelatedComponent> prcList = [
-                SELECT Id, ProductComponentGroupId, ChildProductId, ChildProduct.Name, ChildProduct.BasedOnId
+                SELECT Id, ProductComponentGroupId
                 FROM ProductRelatedComponent
                 WHERE ProductComponentGroupId IN :pcgIds
             ];
             
-            // Group PRCs by PCG
+            // Group PRCs by PCG to check which groups have children
             Map<Id, List<ProductRelatedComponent>> prcByPcg = new Map<Id, List<ProductRelatedComponent>>();
             for (ProductRelatedComponent prc : prcList) {
                 if (!prcByPcg.containsKey(prc.ProductComponentGroupId)) {
@@ -238,59 +238,23 @@ public with sharing class ConstraintStudioController {
                 prcByPcg.get(prc.ProductComponentGroupId).add(prc);
             }
             
+            // Only add ProductComponentGroups (no individual Product2 records)
             for (ProductComponentGroup pcg : pcgList) {
                 List<ProductRelatedComponent> relatedComponents = prcByPcg.get(pcg.Id);
                 if (relatedComponents == null || relatedComponents.size() == 0) {
                     continue;
                 }
                 
-                // Check if MaxBundleComponents == 1 and all child products have same BasedOnId
-                if (pcg.MaxBundleComponents == 1) {
-                    Id firstBasedOnId = null;
-                    Boolean allSameBasedOn = true;
-                    Boolean allHaveBasedOn = true;
-                    
-                    for (ProductRelatedComponent prc : relatedComponents) {
-                        if (prc.ChildProduct.BasedOnId == null) {
-                            allHaveBasedOn = false;
-                            break;
-                        }
-                        if (firstBasedOnId == null) {
-                            firstBasedOnId = prc.ChildProduct.BasedOnId;
-                        } else if (firstBasedOnId != prc.ChildProduct.BasedOnId) {
-                            allSameBasedOn = false;
-                            break;
-                        }
-                    }
-                    
-                    // If conditions met, add ProductComponentGroup
-                    if (allSameBasedOn && allHaveBasedOn) {
-                        String cleanName = pcg.Name.replaceAll('[^a-zA-Z0-9]', '_');
-                        result.add(new Map<String, String>{
-                            'type' => 'ProductComponentGroup',
-                            'value' => 'REL_ProductComponentGroup_' + pcg.Id,
-                            'displayName' => 'Product Component Group: ' + cleanName,
-                            'actualName' => cleanName,
-                            'color' => 'purple',
-                            'recordId' => pcg.Id
-                        });
-                        continue; // Don't add individual products for this group
-                    }
-                }
-                
-                // Add individual ProductRelatedComponents
-                for (ProductRelatedComponent prc : relatedComponents) {
-                    String cleanName = prc.ChildProduct.Name.replaceAll('[^a-zA-Z0-9]', '_');
-                    result.add(new Map<String, String>{
-                        'type' => 'Product',
-                        'value' => 'REL_ProductRelatedComponent_' + prc.Id,
-                        'displayName' => 'Product: ' + cleanName,
-                        'actualName' => cleanName,
-                        'color' => 'green',
-                        'recordId' => prc.Id,
-                        'childProductId' => prc.ChildProductId
-                    });
-                }
+                // Add ProductComponentGroup
+                String cleanName = pcg.Name.replaceAll('[^a-zA-Z0-9]', '_');
+                result.add(new Map<String, String>{
+                    'type' => 'ProductComponentGroup',
+                    'value' => 'REL_ProductComponentGroup_' + pcg.Id,
+                    'displayName' => 'Product Component Group: ' + cleanName,
+                    'actualName' => cleanName,
+                    'color' => 'purple',
+                    'recordId' => pcg.Id
+                });
             }
             
             return result;
