@@ -636,6 +636,8 @@ public with sharing class CMLGenerator {
         }
         
         Set<Id> virtualProduct2Ids = new Set<Id>();
+        Map<Id, String> product2AnnotationMap = new Map<Id, String>(); // Store annotations for Product2 types
+        Map<Id, String> virtualProduct2NameMap = new Map<Id, String>(); // Store Product2 names for virtual types
         if (!product2Ids.isEmpty()) {
             List<CMLSnippet__c> product2Annotations = [
                 SELECT Id, ParentProduct2__c, CML__c
@@ -646,8 +648,26 @@ public with sharing class CMLGenerator {
             ];
             
             for (CMLSnippet__c snippet : product2Annotations) {
+                // Store the annotation for this Product2
+                product2AnnotationMap.put(snippet.ParentProduct2__c, snippet.CML__c);
+                
                 if (snippet.CML__c != null && snippet.CML__c.contains('virtual') && snippet.CML__c.contains('true')) {
                     virtualProduct2Ids.add(snippet.ParentProduct2__c);
+                }
+            }
+            
+            // Query Product2 names for virtual products
+            if (!virtualProduct2Ids.isEmpty()) {
+                List<Product2> virtualProducts = [
+                    SELECT Id, Name
+                    FROM Product2
+                    WHERE Id IN :virtualProduct2Ids
+                ];
+                
+                for (Product2 p : virtualProducts) {
+                    // Clean the name: remove special characters and spaces
+                    String cleanName = p.Name.replaceAll('[^a-zA-Z0-9]', '_');
+                    virtualProduct2NameMap.put(p.Id, cleanName);
                 }
             }
         }
@@ -678,8 +698,24 @@ public with sharing class CMLGenerator {
                 cml += type.annotation + '\n';
             }
             
+            // For Product2 types, also check if there's an annotation from Product2 annotation snippet
+            if (type.typeName.startsWith('Product2_') && product2AnnotationMap.containsKey(type.referenceObjectId)) {
+                String product2Annotation = product2AnnotationMap.get(type.referenceObjectId);
+                if (String.isNotBlank(product2Annotation)) {
+                    cml += product2Annotation + '\n';
+                }
+            }
+            
             // Add type definition with inheritance for Product2 types
-            String typeDeclaration = 'type ' + type.typeName;
+            // For virtual Product2 types, use the clean Product2 name instead of ID
+            String typeDeclaration = 'type ';
+            if (type.typeName.startsWith('Product2_') && virtualProduct2NameMap.containsKey(type.referenceObjectId)) {
+                // Use clean Product2 name for virtual types
+                typeDeclaration += virtualProduct2NameMap.get(type.referenceObjectId);
+            } else {
+                // Use standard type name (Product2_<ID> or ProductClassification_<ID>)
+                typeDeclaration += type.typeName;
+            }
             
             // If this is a Product2 type, add inheritance from ProductClassification
             if (type.typeName.startsWith('Product2_')) {
