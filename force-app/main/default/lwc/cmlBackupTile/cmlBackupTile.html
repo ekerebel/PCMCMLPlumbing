@@ -1,0 +1,39 @@
+<template>
+    <template if:false={showManager}>
+        <!-- Tile matching the CML Deployment design -->
+        <div class="rules-tile" onclick={handleOpenManager}>
+            <div class="tile-icon">
+                <lightning-icon icon-name="custom:custom78" size="medium"></lightning-icon>
+            </div>
+            <div class="tile-separator"></div>
+            <div class="tile-content">
+                <h3 class="tile-title">CML Backup</h3>
+                <p class="tile-description">
+                    Available backups: {backupCount}
+                </p>
+                <div class="button-container">
+                    <lightning-button
+                        variant="brand"
+                        label="Manage Backups"
+                        title="Manage CML Backups"
+                        icon-name="utility:database"
+                    ></lightning-button>
+                </div>
+            </div>
+        </div>
+    </template>
+    
+    <template if:true={showManager}>
+        <!-- Full backup manager -->
+        <c-cml-backup-manager></c-cml-backup-manager>
+        <div class="slds-m-top_small">
+            <lightning-button
+                variant="neutral"
+                label="Back to Tiles"
+                title="Return to tile view"
+                onclick={handleCloseManager}
+                icon-name="utility:back"
+            ></lightning-button>
+        </div>
+    </template>
+</template>

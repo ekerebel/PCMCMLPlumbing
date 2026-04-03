@@ -1,0 +1,19 @@
+{
+  "folders": [
+    {
+      "path": "/Users/ekerebel/Documents/SFDC Dev/PCMCMLPlumbing"
+    }
+  ],
+  "settings": {
+    "eslint.workingDirectories": [
+      "/Users/ekerebel/Documents/SFDC Dev/PCMCMLPlumbing"
+    ],
+    "eslint.validate": [
+      "javascript",
+      "typescript"
+    ],
+    "eslint.options": {
+      "overrideConfigFile": "/Users/ekerebel/Documents/SFDC Dev/PCMCMLPlumbing/.eslintrc.json"
+    }
+  }
+}

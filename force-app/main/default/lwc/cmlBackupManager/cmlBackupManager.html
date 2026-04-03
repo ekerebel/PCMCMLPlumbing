@@ -1,0 +1,169 @@
+<template>
+    <lightning-card title="CML Backup Management" icon-name="custom:custom78">
+        <!-- Create Backup Section -->
+        <div class="slds-p-around_medium">
+            <div class="slds-grid slds-gutters slds-wrap">
+                <div class="slds-col slds-size_1-of-1">
+                    <h2 class="slds-text-heading_small slds-m-bottom_small">Create New Backup</h2>
+                    <lightning-button
+                        variant="brand"
+                        label="Create a Backup"
+                        title="Create a new backup of all CML Snippets"
+                        onclick={handleOpenCreateModal}
+                        icon-name="utility:add"
+                    ></lightning-button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Backup List Section -->
+        <div class="slds-p-around_medium slds-border_top">
+            <h2 class="slds-text-heading_small slds-m-bottom_small">Available Backups</h2>
+            
+            <template if:true={isLoading}>
+                <div class="slds-text-align_center slds-p-around_medium">
+                    <lightning-spinner alternative-text="Loading backups..." size="medium"></lightning-spinner>
+                </div>
+            </template>
+
+            <template if:false={isLoading}>
+                <template if:true={hasBackups}>
+                    <lightning-datatable
+                        key-field="Id"
+                        data={backups}
+                        columns={columns}
+                        onrowaction={handleRowAction}
+                        hide-checkbox-column
+                    ></lightning-datatable>
+                </template>
+
+                <template if:false={hasBackups}>
+                    <div class="slds-text-align_center slds-p-around_medium">
+                        <p class="slds-text-color_weak">No backups available. Create your first backup to get started.</p>
+                    </div>
+                </template>
+            </template>
+        </div>
+
+        <!-- Create Backup Modal -->
+        <template if:true={showCreateModal}>
+            <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open">
+                <div class="slds-modal__container">
+                    <header class="slds-modal__header">
+                        <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" 
+                                title="Close" onclick={handleCloseCreateModal}>
+                            <lightning-icon icon-name="utility:close" alternative-text="close" size="small"></lightning-icon>
+                            <span class="slds-assistive-text">Close</span>
+                        </button>
+                        <h2 class="slds-text-heading_medium">Create New Backup</h2>
+                    </header>
+                    <div class="slds-modal__content slds-p-around_medium">
+                        <lightning-input
+                            label="Backup Name"
+                            value={backupName}
+                            onchange={handleBackupNameChange}
+                            required
+                        ></lightning-input>
+                    </div>
+                    <footer class="slds-modal__footer">
+                        <lightning-button
+                            variant="neutral"
+                            label="Cancel"
+                            onclick={handleCloseCreateModal}
+                        ></lightning-button>
+                        <lightning-button
+                            variant="brand"
+                            label="Create Backup"
+                            onclick={handleCreateBackup}
+                            disabled={isCreating}
+                        ></lightning-button>
+                    </footer>
+                </div>
+            </section>
+            <div class="slds-backdrop slds-backdrop_open"></div>
+        </template>
+
+        <!-- Restore Confirmation Modal -->
+        <template if:true={showRestoreModal}>
+            <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open">
+                <div class="slds-modal__container">
+                    <header class="slds-modal__header">
+                        <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" 
+                                title="Close" onclick={handleCloseRestoreModal}>
+                            <lightning-icon icon-name="utility:close" alternative-text="close" size="small"></lightning-icon>
+                            <span class="slds-assistive-text">Close</span>
+                        </button>
+                        <h2 class="slds-text-heading_medium">Confirm Restore</h2>
+                    </header>
+                    <div class="slds-modal__content slds-p-around_medium">
+                        <div class="slds-notify slds-notify_alert slds-alert_warning" role="alert">
+                            <span class="slds-assistive-text">warning</span>
+                            <h2>
+                                <lightning-icon icon-name="utility:warning" alternative-text="Warning" size="small" class="slds-m-right_x-small"></lightning-icon>
+                                Warning: This action cannot be undone
+                            </h2>
+                        </div>
+                        <p class="slds-m-top_medium">
+                            Are you sure you want to restore from backup "<strong>{selectedBackupName}</strong>"?
+                        </p>
+                        <p class="slds-m-top_small slds-text-color_error">
+                            All current CML Snippet records will be permanently deleted and replaced with the backed-up data.
+                        </p>
+                    </div>
+                    <footer class="slds-modal__footer">
+                        <lightning-button
+                            variant="neutral"
+                            label="Cancel"
+                            onclick={handleCloseRestoreModal}
+                        ></lightning-button>
+                        <lightning-button
+                            variant="destructive"
+                            label="Confirm Restore"
+                            onclick={handleConfirmRestore}
+                            disabled={isRestoring}
+                        ></lightning-button>
+                    </footer>
+                </div>
+            </section>
+            <div class="slds-backdrop slds-backdrop_open"></div>
+        </template>
+
+        <!-- Delete Confirmation Modal -->
+        <template if:true={showDeleteModal}>
+            <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open">
+                <div class="slds-modal__container">
+                    <header class="slds-modal__header">
+                        <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" 
+                                title="Close" onclick={handleCloseDeleteModal}>
+                            <lightning-icon icon-name="utility:close" alternative-text="close" size="small"></lightning-icon>
+                            <span class="slds-assistive-text">Close</span>
+                        </button>
+                        <h2 class="slds-text-heading_medium">Confirm Delete</h2>
+                    </header>
+                    <div class="slds-modal__content slds-p-around_medium">
+                        <p class="slds-m-top_medium">
+                            Are you sure you want to delete backup "<strong>{selectedBackupName}</strong>"?
+                        </p>
+                        <p class="slds-m-top_small slds-text-color_weak">
+                            This action cannot be undone. The backup file will be permanently deleted.
+                        </p>
+                    </div>
+                    <footer class="slds-modal__footer">
+                        <lightning-button
+                            variant="neutral"
+                            label="Cancel"
+                            onclick={handleCloseDeleteModal}
+                        ></lightning-button>
+                        <lightning-button
+                            variant="destructive"
+                            label="Delete Backup"
+                            onclick={handleConfirmDelete}
+                            disabled={isDeleting}
+                        ></lightning-button>
+                    </footer>
+                </div>
+            </section>
+            <div class="slds-backdrop slds-backdrop_open"></div>
+        </template>
+    </lightning-card>
+</template>
